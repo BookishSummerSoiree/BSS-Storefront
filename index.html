@@ -199,6 +199,22 @@
   .cart-line-price{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:14px; white-space:nowrap; }
   .cart-line-remove{ font-family:'Montserrat',sans-serif; font-size:11px; color:var(--terracotta); cursor:pointer; margin-top:6px; }
 
+  /* ---- "Keep some of the books" list (series partial-remove) ---- */
+  .keep-list{ margin-bottom:16px; max-height:46vh; overflow-y:auto; }
+  .keep-list-item{
+    display:flex; align-items:center; gap:12px; padding:10px 4px;
+    border-bottom:1px solid rgba(12,30,61,0.08); font-family:'Lora',serif; font-size:14.5px;
+  }
+  .keep-list-item img{ width:36px; height:52px; object-fit:cover; border-radius:4px; background:var(--cream); flex-shrink:0; }
+  .keep-list-item .keep-item-info{ flex:1; min-width:0; }
+  .keep-list-item .keep-item-title{ font-weight:600; }
+  .keep-list-item .keep-item-meta{ font-size:12px; color:#777; }
+  .keep-list-item.removed{ opacity:.35; }
+  .keep-trash-btn{
+    background:none; border:none; cursor:pointer; padding:6px; flex-shrink:0;
+    color:var(--terracotta); font-size:18px; line-height:1;
+  }
+
   .cart-total-row{
     display:flex; justify-content:space-between; align-items:center;
     padding:16px 0; font-family:'Montserrat',sans-serif; font-weight:700; font-size:17px;
@@ -905,6 +921,12 @@ function startGroupSigningFlow(books){
     }
   }
 
+  // Every book added together here came from one "add this series" action,
+  // so they're tagged with a shared seriesGroupId and displayed in the cart
+  // as a single series row instead of one line per book (see
+  // groupCartByBook / renderCart).
+  const groupId = 'sg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+
   openModal(`
     <div class="modal-title">Do you want these books signed?</div>
     <div class="modal-sub">${books.length} books from "${escapeHtml(books[0].seriesName || "")}" added to your cart.</div>
@@ -915,7 +937,7 @@ function startGroupSigningFlow(books){
   `, (card)=>{
     card.querySelector('#gSignedNo').onclick = () => {
       closeModal();
-      addLinesToCart(books.map((b,i) => makeCartLine(b, false, "", prices[i])));
+      addLinesToCart(books.map((b,i) => makeCartLine(b, false, "", prices[i], groupId)));
     };
     card.querySelector('#gSignedYes').onclick = () => {
       closeModal();
@@ -928,7 +950,7 @@ function startGroupSigningFlow(books){
       `, (card2)=>{
         card2.querySelector('#gPersNo').onclick = () => {
           closeModal();
-          addLinesToCart(books.map((b,i) => makeCartLine(b, true, "", prices[i])));
+          addLinesToCart(books.map((b,i) => makeCartLine(b, true, "", prices[i], groupId)));
         };
         card2.querySelector('#gPersYes').onclick = () => {
           closeModal();
@@ -940,7 +962,7 @@ function startGroupSigningFlow(books){
             card3.querySelector('#gNameNextBtn').onclick = () => {
               const name = card3.querySelector('#gNameInput').value.trim();
               closeModal();
-              addLinesToCart(books.map((b,i) => makeCartLine(b, true, name, prices[i])));
+              addLinesToCart(books.map((b,i) => makeCartLine(b, true, name, prices[i], groupId)));
             };
           });
         };
@@ -949,7 +971,7 @@ function startGroupSigningFlow(books){
   });
 }
 
-function makeCartLine(book, signed, personalizedName, priceOverride){
+function makeCartLine(book, signed, personalizedName, priceOverride, seriesGroupId){
   return {
     cartLineId: 'cl_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8),
     bookId: book.id,
@@ -958,7 +980,13 @@ function makeCartLine(book, signed, personalizedName, priceOverride){
     coverUrl: book.coverUrl,
     unitPrice: priceOverride !== undefined ? priceOverride : effectivePrice(book),
     signed: !!signed,
-    personalizedName: personalizedName || ""
+    personalizedName: personalizedName || "",
+    // Set only when this copy was added as part of a "whole series" / "a
+    // few books from this series" group action, so the cart can show one
+    // series row instead of one row per book.
+    seriesGroupId: seriesGroupId || null,
+    seriesName: book.seriesName || "",
+    seriesCoverUrl: book.seriesHasCover === "Yes" && book.seriesCoverUrl ? book.seriesCoverUrl : ""
   };
 }
 function makeUnsignedLines(book, count){
@@ -988,15 +1016,39 @@ function cartTotal(){
    what checkout/Orders needs. Display groups those copies two levels deep:
    by book (one Amazon-style row with a combined qty +/-), then within a
    book by "variant" (signed + personalizedName) so two differently-
-   personalized copies still show as their own lines underneath. */
+   personalized copies still show as their own lines underneath.
+   Copies added together as a series (seriesGroupId set) are grouped into
+   one series row instead, so a series shows as a single cart line rather
+   than one line per book in it. */
+// A series group only displays as one "Series" row while it still holds
+// every book in that series. Once a book's been pulled out of it (via the
+// "keep some of the books" flow, or any other way), it's no longer the
+// complete set, so the remaining copies fall back to showing as individual
+// books instead of a half-series row.
+function isSeriesGroupComplete(seriesGroupId){
+  const lines = cart.filter(l => l.seriesGroupId === seriesGroupId);
+  if(lines.length === 0) return false;
+  const { author, seriesName } = lines[0];
+  const totalInSeries = catalog.filter(b => b.isSeries && b.author === author && b.seriesName === seriesName).length;
+  if(totalInSeries === 0) return false;
+  const uniqueBooks = new Set(lines.map(l => l.bookId)).size;
+  return uniqueBooks >= totalInSeries;
+}
+
 function groupCartByBook(){
   const order = [];
   const map = new Map();
   cart.forEach(line=>{
-    if(!map.has(line.bookId)){ map.set(line.bookId, []); order.push(line.bookId); }
-    map.get(line.bookId).push(line);
+    const asSeries = line.seriesGroupId && isSeriesGroupComplete(line.seriesGroupId);
+    const key = asSeries ? ("series:" + line.seriesGroupId) : ("book:" + line.bookId);
+    if(!map.has(key)){ map.set(key, []); order.push(key); }
+    map.get(key).push(line);
   });
-  return order.map(bookId => ({ bookId, lines: map.get(bookId) }));
+  return order.map(key => {
+    const lines = map.get(key);
+    const isSeriesGroup = key.indexOf("series:") === 0;
+    return { groupKey: key, bookId: lines[0].bookId, isSeriesGroup, seriesGroupId: isSeriesGroup ? lines[0].seriesGroupId : null, lines };
+  });
 }
 function variantsForLines(lines){
   const order = [];
@@ -1036,7 +1088,9 @@ function incrementBookInCart(bookId){
 // If there's more than one variant, which copy to remove is genuinely
 // ambiguous, so ask.
 function decrementBookInCart(bookId){
-  const lines = cart.filter(l => l.bookId === bookId);
+  // Excludes copies that are part of a still-complete series group — those
+  // are managed via the series row's own remove flow, not this stepper.
+  const lines = cart.filter(l => l.bookId === bookId && !(l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)));
   if(lines.length === 0) return;
   const variantGroups = variantsForLines(lines);
   if(variantGroups.length === 1){
@@ -1079,6 +1133,79 @@ function openRemoveWhichVariantModal(bookId, variantGroups){
   });
 }
 
+/* ---- Removing from a series row ----
+   "Remove series" asks whether to drop the whole set or just some of the
+   books. Keeping some pulls those copies out of the group entirely (they
+   display as ordinary individual books from then on, per
+   isSeriesGroupComplete), with a trash icon per book and an "Update cart"
+   button to commit the change. */
+function openSeriesRemoveChoiceModal(group){
+  const seriesName = group.lines[0].seriesName || group.lines[0].title;
+  openModal(`
+    <div class="eyebrow">${escapeHtml(seriesName)}</div>
+    <div class="modal-title">Do you want to remove the entire series?</div>
+    <div class="modal-sub">Or keep some of the books and only remove a few.</div>
+    <div class="radio-group">
+      <div class="radio-option" id="optRemoveAll"><span>Remove the entire series</span></div>
+      <div class="radio-option" id="optKeepSome"><span>Keep some of the books</span></div>
+    </div>
+  `, (card)=>{
+    card.querySelector('#optRemoveAll').onclick = () => {
+      closeModal();
+      cart = cart.filter(l => l.seriesGroupId !== group.seriesGroupId);
+      saveCartToStorage();
+      render();
+    };
+    card.querySelector('#optKeepSome').onclick = () => {
+      closeModal();
+      openSeriesKeepSomeModal(group);
+    };
+  });
+}
+
+function openSeriesKeepSomeModal(group){
+  const seriesName = group.lines[0].seriesName || "";
+  const removedIds = new Set();
+  const itemsHtml = group.lines.map(line => `
+    <div class="keep-list-item" data-lineid="${line.cartLineId}">
+      ${line.coverUrl ? `<img src="${coverSrc(line.coverUrl)}" alt="">` : `<div style="width:36px;height:52px;background:var(--cream);border-radius:4px;flex-shrink:0;"></div>`}
+      <div class="keep-item-info">
+        <div class="keep-item-title">${escapeHtml(line.title)}</div>
+        <div class="keep-item-meta">${escapeHtml(variantDescriptionPlain(line))}</div>
+      </div>
+      <button type="button" class="keep-trash-btn" title="Remove this book">&#128465;</button>
+    </div>
+  `).join("");
+
+  openModal(`
+    <div class="eyebrow">${escapeHtml(seriesName)}</div>
+    <div class="modal-title">Which books do you want to keep?</div>
+    <div class="modal-sub">Tap the trash icon to remove a book, then update your cart.</div>
+    <div class="keep-list">${itemsHtml}</div>
+    <button class="btn btn-primary btn-block" id="updateCartBtn">Update cart</button>
+  `, (card)=>{
+    card.querySelectorAll('.keep-list-item').forEach(itemEl=>{
+      itemEl.querySelector('.keep-trash-btn').onclick = () => {
+        const lineId = itemEl.dataset.lineid;
+        if(removedIds.has(lineId)){
+          removedIds.delete(lineId);
+          itemEl.classList.remove('removed');
+        }else{
+          removedIds.add(lineId);
+          itemEl.classList.add('removed');
+        }
+      };
+    });
+    card.querySelector('#updateCartBtn').onclick = () => {
+      closeModal();
+      if(removedIds.size === 0) return;
+      cart = cart.filter(l => !removedIds.has(l.cartLineId));
+      saveCartToStorage();
+      render();
+    };
+  });
+}
+
 /* =========================================================
    CART
 ========================================================= */
@@ -1103,11 +1230,46 @@ function renderCart(app){
   groupCartByBook().forEach(group=>{
     const lines = group.lines;
     const first = lines[0];
-    const variantGroups = variantsForLines(lines);
     const lineTotal = lines.reduce((sum,l) => sum + (parseFloat(l.unitPrice)||0), 0);
 
     const row = document.createElement('div');
     row.className = "cart-line";
+
+    if(group.isSeriesGroup){
+      // All books added together as a series share one signed/personalized
+      // decision, so there's a single variant line for the whole group —
+      // and a book-count badge instead of a per-copy qty stepper, since
+      // "+"/"-" on a set of different books isn't a single-book action.
+      const seriesCover = first.seriesCoverUrl || first.coverUrl;
+      const bookTitles = lines.map(l => l.title).join(", ");
+      row.innerHTML = `
+        <div class="cart-line-cover">${seriesCover ? `<img src="${coverSrc(seriesCover)}" alt="">` : ""}</div>
+        <div class="cart-line-info">
+          <div class="cart-line-title">${escapeHtml(first.seriesName || first.title)} <span style="font-weight:400;opacity:.7;">— Series</span></div>
+          <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
+          <div class="cart-line-variants">
+            <div class="cart-line-meta">${lines.length} book${lines.length===1?"":"s"}: ${escapeHtml(bookTitles)}</div>
+            <div class="cart-line-meta">${escapeHtml(variantDescriptionPlain(first))}</div>
+          </div>
+        </div>
+        <div class="cart-line-right">
+          <div class="cart-line-price">${money(lineTotal)}</div>
+        </div>
+      `;
+
+      const removeAllLink = document.createElement('div');
+      removeAllLink.className = "cart-line-remove";
+      removeAllLink.textContent = "Remove series";
+      removeAllLink.onclick = () => {
+        openSeriesRemoveChoiceModal(group);
+      };
+      row.querySelector('.cart-line-info').appendChild(removeAllLink);
+
+      list.appendChild(row);
+      return;
+    }
+
+    const variantGroups = variantsForLines(lines);
     row.innerHTML = `
       <div class="cart-line-cover">${first.coverUrl ? `<img src="${coverSrc(first.coverUrl)}" alt="">` : ""}</div>
       <div class="cart-line-info">
@@ -1138,7 +1300,7 @@ function renderCart(app){
     removeAllLink.className = "cart-line-remove";
     removeAllLink.textContent = "Remove all";
     removeAllLink.onclick = () => {
-      cart = cart.filter(l => l.bookId !== group.bookId);
+      cart = cart.filter(l => l.bookId !== group.bookId || l.seriesGroupId);
       saveCartToStorage();
       render();
     };
