@@ -69,12 +69,21 @@
     cursor:pointer; transition:transform .12s ease, box-shadow .12s ease;
   }
   .book-card:active{ transform:scale(0.99); }
+  .book-cover-wrap{ flex:0 0 auto; position:relative; }
   .book-cover{
-    flex:0 0 auto; width:72px; height:104px; border-radius:6px;
+    width:72px; height:104px; border-radius:6px;
     background:var(--cream); overflow:hidden;
     display:flex; align-items:center; justify-content:center;
   }
   .book-cover img{ width:100%; height:100%; object-fit:cover; }
+  .new-burst{
+    position:absolute; top:-8px; left:-10px; z-index:2;
+    background:var(--terracotta); color:#fff;
+    font-family:'Montserrat',sans-serif; font-weight:700; font-size:10.5px; letter-spacing:.02em;
+    padding:4px 9px 3px; border-radius:999px; transform:rotate(-12deg);
+    box-shadow:0 2px 6px rgba(228,89,63,0.45); border:2px solid #fff;
+    pointer-events:none;
+  }
   .book-cover-placeholder{ font-size:10px; color:#999; text-align:center; padding:6px; font-family:'Montserrat',sans-serif; }
   .book-info{ flex:1; min-width:0; }
   .book-title{ font-family:'Cormorant Garamond',serif; font-weight:700; font-size:19px; line-height:1.2; }
@@ -188,6 +197,35 @@
     padding:16px 0; font-family:'Montserrat',sans-serif; font-weight:700; font-size:17px;
     border-top:2px solid var(--navy); margin-top:6px;
   }
+  .cart-line-right{ display:flex; flex-direction:column; align-items:flex-end; gap:10px; flex-shrink:0; }
+  .cart-qty-stepper{ gap:10px; }
+  .cart-qty-stepper button{ width:30px; height:30px; font-size:15px; }
+  .cart-line-variants{ margin-top:4px; }
+
+  /* ---- Browse: "already in your cart" badge ---- */
+  .book-cart-badge{
+    display:inline-block; margin-top:6px; font-family:'Montserrat',sans-serif;
+    font-size:10.5px; font-weight:700; letter-spacing:.03em; color:#fff;
+    background:var(--navy); padding:3px 9px; border-radius:999px;
+  }
+
+  /* ---- Browse: sort & filter chips ---- */
+  .filter-bar{ display:flex; flex-wrap:wrap; gap:8px; margin:-6px 0 16px; }
+  .filter-chip{
+    font-family:'Montserrat',sans-serif; font-weight:600; font-size:12.5px;
+    letter-spacing:.02em; border:1.5px solid rgba(12,30,61,0.15); background:#fff;
+    color:var(--navy); border-radius:999px; padding:8px 14px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+  }
+  .filter-chip.active{ background:var(--terracotta); border-color:var(--terracotta); color:#fff; }
+  .author-filter-panel{
+    background:#fff; border:1.5px solid rgba(12,30,61,0.1); border-radius:14px;
+    padding:16px; margin:-8px 0 16px;
+  }
+  .author-filter-title{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:13px; margin-bottom:10px; }
+  .author-filter-list{ display:flex; flex-wrap:wrap; gap:8px; }
+  .author-filter-note{ font-family:'Montserrat',sans-serif; font-size:11.5px; color:#888; margin-top:10px; }
+  .author-filter-apply{ margin-top:14px; }
 
   .eyebrow{
     font-family:'Montserrat',sans-serif; font-weight:700; font-size:12px;
@@ -248,6 +286,44 @@ let cart = loadCartFromStorage();
 let currentScreen = "browse";
 let searchQuery = "";
 
+/* ---- Browse sort/filter state ----
+   sortMode: "default" (the catalog's own author-then-title order from the
+   backend) | "alpha" (title A–Z) | "price-asc" | "price-desc".
+   filterAuthors: empty Set = no author filter applied (shows everyone).
+   stagedAuthorFilter/authorPanelOpen: the author picker only takes effect
+   once "Apply Filter" is tapped, so selections are staged separately from
+   the live filter until then. */
+let sortMode = "default";
+let filterAuthors = new Set();
+let filterSoireeOnly = false;
+let filterSeriesOnly = false;
+let authorPanelOpen = false;
+let stagedAuthorFilter = new Set();
+
+// Format filter — a book "matches" a selected format if it comes in that
+// format at all (book-level formats for a standalone book, series-level
+// formats for one that's part of a series). Mirrors the Author Info app's
+// own format vocabulary.
+const ALL_FORMAT_OPTIONS = [
+  {value:"paperback", label:"Paperback"},
+  {value:"hardcover", label:"Hardcover"},
+  {value:"specialEdition", label:"Special Edition"},
+  {value:"boxSet", label:"Box Set"}
+];
+let filterFormats = new Set();
+let formatPanelOpen = false;
+let stagedFormatFilter = new Set();
+
+// A book saved before the format-variant feature existed has no `formats`
+// array at all — same fallback the Author Info app itself uses: treat it
+// as a plain paperback rather than matching nothing.
+function bookFormats(book){
+  const list = (book.isSeries && Array.isArray(book.seriesFormats) && book.seriesFormats.length)
+    ? book.seriesFormats
+    : book.formats;
+  return (Array.isArray(list) && list.length) ? list : ["paperback"];
+}
+
 function loadCartFromStorage(){
   try{
     const raw = localStorage.getItem("bss_preorder_cart");
@@ -303,6 +379,9 @@ function seriesEffectivePrice(book){
 
 function updateCartBadge(){
   document.getElementById('cartBadge').textContent = cart.length;
+}
+function cartCountForBook(bookId){
+  return cart.filter(l => l.bookId === bookId).length;
 }
 
 /* =========================================================
@@ -360,19 +439,188 @@ function renderBrowse(app){
   input.addEventListener('input', ()=>{ searchQuery = input.value; renderBookGrid(); });
   app.appendChild(searchWrap);
 
+  const filterBar = document.createElement('div');
+  filterBar.className = "filter-bar";
+  app.appendChild(filterBar);
+
+  const authorPanelWrap = document.createElement('div');
+  app.appendChild(authorPanelWrap);
+
+  const formatPanelWrap = document.createElement('div');
+  app.appendChild(formatPanelWrap);
+
   const grid = document.createElement('div');
   grid.className = "book-grid";
   grid.id = "bookGrid";
   app.appendChild(grid);
 
+  renderFilterChips();
+  renderAuthorPanel();
+  renderFormatPanel();
   renderBookGrid();
+
+  function chip(label, active, onClick){
+    const b = document.createElement('button');
+    b.type = "button";
+    b.className = "filter-chip" + (active ? " active" : "");
+    b.textContent = label;
+    b.onclick = onClick;
+    return b;
+  }
+
+  function renderFilterChips(){
+    filterBar.innerHTML = "";
+
+    filterBar.appendChild(chip("A–Z", sortMode === "alpha", () => {
+      sortMode = sortMode === "alpha" ? "default" : "alpha";
+      renderFilterChips(); renderBookGrid();
+    }));
+
+    const priceLabel = sortMode === "price-asc" ? "Price: Low to High"
+      : sortMode === "price-desc" ? "Price: High to Low"
+      : "Price";
+    filterBar.appendChild(chip(priceLabel, sortMode === "price-asc" || sortMode === "price-desc", () => {
+      sortMode = sortMode === "price-asc" ? "price-desc" : sortMode === "price-desc" ? "default" : "price-asc";
+      renderFilterChips(); renderBookGrid();
+    }));
+
+    filterBar.appendChild(chip("Soirée Pricing", filterSoireeOnly, () => {
+      filterSoireeOnly = !filterSoireeOnly;
+      renderFilterChips(); renderBookGrid();
+    }));
+
+    filterBar.appendChild(chip("Part of a Series", filterSeriesOnly, () => {
+      filterSeriesOnly = !filterSeriesOnly;
+      renderFilterChips(); renderBookGrid();
+    }));
+
+    const authorLabel = filterAuthors.size ? `By Author (${filterAuthors.size})` : "By Author";
+    filterBar.appendChild(chip(authorLabel, authorPanelOpen || filterAuthors.size > 0, () => {
+      authorPanelOpen = !authorPanelOpen;
+      if(authorPanelOpen) stagedAuthorFilter = new Set(filterAuthors);
+      formatPanelOpen = false;
+      renderFilterChips(); renderAuthorPanel(); renderFormatPanel();
+    }));
+
+    const formatLabel = filterFormats.size ? `Format (${filterFormats.size})` : "Format";
+    filterBar.appendChild(chip(formatLabel, formatPanelOpen || filterFormats.size > 0, () => {
+      formatPanelOpen = !formatPanelOpen;
+      if(formatPanelOpen) stagedFormatFilter = new Set(filterFormats);
+      authorPanelOpen = false;
+      renderFilterChips(); renderAuthorPanel(); renderFormatPanel();
+    }));
+  }
+
+  function renderFormatPanel(){
+    formatPanelWrap.innerHTML = "";
+    if(!formatPanelOpen) return;
+
+    const panel = document.createElement('div');
+    panel.className = "author-filter-panel";
+    panel.innerHTML = `<div class="author-filter-title">Show these formats:</div>`;
+
+    const list = document.createElement('div');
+    list.className = "author-filter-list";
+
+    const allBtn = chip("All", stagedFormatFilter.size === 0, () => {
+      stagedFormatFilter = new Set();
+      renderFormatPanel();
+    });
+    list.appendChild(allBtn);
+
+    ALL_FORMAT_OPTIONS.forEach(opt=>{
+      list.appendChild(chip(opt.label, stagedFormatFilter.has(opt.value), () => {
+        if(stagedFormatFilter.has(opt.value)) stagedFormatFilter.delete(opt.value);
+        else stagedFormatFilter.add(opt.value);
+        renderFormatPanel();
+      }));
+    });
+    panel.appendChild(list);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = "button";
+    applyBtn.className = "btn btn-primary btn-compact author-filter-apply";
+    applyBtn.textContent = "Apply Filter";
+    applyBtn.onclick = () => {
+      filterFormats = new Set(stagedFormatFilter);
+      formatPanelOpen = false;
+      renderFilterChips();
+      renderFormatPanel();
+      renderBookGrid();
+    };
+    panel.appendChild(applyBtn);
+
+    formatPanelWrap.appendChild(panel);
+  }
+
+  function renderAuthorPanel(){
+    authorPanelWrap.innerHTML = "";
+    if(!authorPanelOpen) return;
+
+    const authors = Array.from(new Set(catalog.map(b => b.author))).sort((a,b)=>a.localeCompare(b));
+
+    const panel = document.createElement('div');
+    panel.className = "author-filter-panel";
+    panel.innerHTML = `<div class="author-filter-title">Show books from:</div>`;
+
+    const list = document.createElement('div');
+    list.className = "author-filter-list";
+
+    const allBtn = chip("All", stagedAuthorFilter.size === 0, () => {
+      stagedAuthorFilter = new Set();
+      renderAuthorPanel();
+    });
+    list.appendChild(allBtn);
+
+    authors.forEach(name=>{
+      list.appendChild(chip(name, stagedAuthorFilter.has(name), () => {
+        if(stagedAuthorFilter.has(name)) stagedAuthorFilter.delete(name);
+        else stagedAuthorFilter.add(name);
+        renderAuthorPanel();
+      }));
+    });
+    panel.appendChild(list);
+
+    const note = document.createElement('div');
+    note.className = "author-filter-note";
+    note.textContent = "Only authors having a presale are listed.";
+    panel.appendChild(note);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = "button";
+    applyBtn.className = "btn btn-primary btn-compact author-filter-apply";
+    applyBtn.textContent = "Apply Filter";
+    applyBtn.onclick = () => {
+      filterAuthors = new Set(stagedAuthorFilter);
+      authorPanelOpen = false;
+      renderFilterChips();
+      renderAuthorPanel();
+      renderBookGrid();
+    };
+    panel.appendChild(applyBtn);
+
+    authorPanelWrap.appendChild(panel);
+  }
 
   function renderBookGrid(){
     const q = searchQuery.trim().toLowerCase();
-    const filtered = catalog.filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
+    let filtered = catalog.filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
+    if(filterAuthors.size) filtered = filtered.filter(b => filterAuthors.has(b.author));
+    if(filterSoireeOnly) filtered = filtered.filter(b => b.soireePrice !== "" && !isNaN(parseFloat(b.soireePrice)));
+    if(filterSeriesOnly) filtered = filtered.filter(b => b.isSeries);
+    if(filterFormats.size) filtered = filtered.filter(b => bookFormats(b).some(f => filterFormats.has(f)));
+
+    if(sortMode === "alpha"){
+      filtered = filtered.slice().sort((a,b)=>a.title.localeCompare(b.title));
+    } else if(sortMode === "price-asc"){
+      filtered = filtered.slice().sort((a,b)=>effectivePrice(a)-effectivePrice(b));
+    } else if(sortMode === "price-desc"){
+      filtered = filtered.slice().sort((a,b)=>effectivePrice(b)-effectivePrice(a));
+    }
+
     grid.innerHTML = "";
     if(filtered.length === 0){
-      grid.innerHTML = `<div class="empty-state">No books match "${escapeHtml(searchQuery)}" yet — try a different author or title.</div>`;
+      grid.innerHTML = `<div class="empty-state">No books match${q ? ` "${escapeHtml(searchQuery)}"` : " these filters"} yet — try adjusting your search or filters.</div>`;
       return;
     }
     filtered.forEach(book=>{
@@ -391,8 +639,13 @@ function renderBrowse(app){
       const blurbId = book.id || (book.author + "_" + book.title);
       const isExpanded = expandedBlurbIds.has(blurbId);
 
+      const inCartCount = cartCountForBook(book.id);
+
       card.innerHTML = `
-        <div class="book-cover">${book.coverUrl ? `<img src="${coverSrc(book.coverUrl)}" alt="">` : `<div class="book-cover-placeholder">No cover yet</div>`}</div>
+        <div class="book-cover-wrap">
+          <div class="book-cover">${book.coverUrl ? `<img src="${coverSrc(book.coverUrl)}" alt="">` : `<div class="book-cover-placeholder">No cover yet</div>`}</div>
+          ${book.isNewTag ? `<div class="new-burst">New!</div>` : ""}
+        </div>
         <div class="book-info">
           <div class="book-title">${escapeHtml(book.title)}</div>
           <div class="book-author">by ${escapeHtml(book.author)}</div>
@@ -401,6 +654,7 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
           ${book.isSeries && book.seriesName ? `<div class="book-series-pill">Part of "${escapeHtml(book.seriesName)}"</div>` : ""}
+          ${inCartCount > 0 ? `<div class="book-cart-badge">${inCartCount} ${inCartCount===1?"copy":"copies"} in your cart</div>` : ""}
         </div>
       `;
 
@@ -722,6 +976,102 @@ function cartTotal(){
   return cart.reduce((sum,l) => sum + (parseFloat(l.unitPrice)||0), 0);
 }
 
+/* ---- Cart grouping ----
+   The cart itself stays one row per physical copy (cartLineId) — that's
+   what checkout/Orders needs. Display groups those copies two levels deep:
+   by book (one Amazon-style row with a combined qty +/-), then within a
+   book by "variant" (signed + personalizedName) so two differently-
+   personalized copies still show as their own lines underneath. */
+function groupCartByBook(){
+  const order = [];
+  const map = new Map();
+  cart.forEach(line=>{
+    if(!map.has(line.bookId)){ map.set(line.bookId, []); order.push(line.bookId); }
+    map.get(line.bookId).push(line);
+  });
+  return order.map(bookId => ({ bookId, lines: map.get(bookId) }));
+}
+function variantsForLines(lines){
+  const order = [];
+  const map = new Map();
+  lines.forEach(line=>{
+    const key = (line.signed ? "1" : "0") + "|" + (line.personalizedName || "");
+    if(!map.has(key)){ map.set(key, []); order.push(key); }
+    map.get(key).push(line);
+  });
+  return order.map(key => map.get(key));
+}
+function variantDescriptionPlain(line){
+  if(line.signed && line.personalizedName) return `Signed — personalized to "${line.personalizedName}"`;
+  if(line.signed) return "Signed";
+  return "Not signed";
+}
+
+// "+" on a book's cart row adds exactly one new copy, and a new copy is a
+// fresh decision — so it goes through the same signed/personalized
+// question flow as adding it from Browse, just skipping the "how many"
+// step since this is always +1.
+function incrementBookInCart(bookId){
+  let book = catalog.find(b => b.id === bookId);
+  if(!book){
+    const existing = cart.find(l => l.bookId === bookId);
+    if(!existing) return;
+    // Catalog not loaded (or the book's been pulled) — fall back to what
+    // the existing cart line already knows, so the flow still has a
+    // title/author/cover/price to show.
+    book = { id: bookId, author: existing.author, title: existing.title, coverUrl: existing.coverUrl, regularPrice: existing.unitPrice, soireePrice: "" };
+  }
+  openSignedQuestion(book, 1);
+}
+
+// "-" on a book's cart row: if every copy of that book is identical
+// (same signed/personalization), just drop one — it doesn't matter which.
+// If there's more than one variant, which copy to remove is genuinely
+// ambiguous, so ask.
+function decrementBookInCart(bookId){
+  const lines = cart.filter(l => l.bookId === bookId);
+  if(lines.length === 0) return;
+  const variantGroups = variantsForLines(lines);
+  if(variantGroups.length === 1){
+    const vLines = variantGroups[0];
+    removeCartLine(vLines[vLines.length - 1].cartLineId);
+    return;
+  }
+  openRemoveWhichVariantModal(bookId, variantGroups);
+}
+
+function openRemoveWhichVariantModal(bookId, variantGroups){
+  const first = cart.find(l => l.bookId === bookId);
+  const optionsHtml = variantGroups.map((vLines,i)=>{
+    const countSuffix = vLines.length > 1 ? ` (${vLines.length})` : "";
+    return `<div class="radio-option" data-vi="${i}"><span>${escapeHtml(variantDescriptionPlain(vLines[0]))}${countSuffix}</span></div>`;
+  }).join("");
+
+  // Mirrors the exact phrasing when every variant is a named
+  // personalization ("Are you deleting the personalized copy for Ann or
+  // Nicole?"); falls back to a plainer prompt for a mixed set (e.g. one
+  // unsigned copy plus a personalized one).
+  const allNamed = variantGroups.every(vLines => vLines[0].personalizedName);
+  const questionText = allNamed
+    ? `Are you deleting the personalized copy for ${variantGroups.map(v => `"${v[0].personalizedName}"`).join(" or ")}?`
+    : "Which copy would you like to remove?";
+
+  openModal(`
+    <div class="eyebrow">${escapeHtml(first ? first.title : "")}</div>
+    <div class="modal-title">${questionText}</div>
+    <div class="radio-group">${optionsHtml}</div>
+  `, (card)=>{
+    card.querySelectorAll('.radio-option').forEach(el=>{
+      el.onclick = () => {
+        const vLines = variantGroups[parseInt(el.dataset.vi, 10)];
+        const toRemove = vLines[vLines.length - 1];
+        closeModal();
+        removeCartLine(toRemove.cartLineId);
+      };
+    });
+  });
+}
+
 /* =========================================================
    CART
 ========================================================= */
@@ -743,22 +1093,53 @@ function renderCart(app){
   }
 
   const list = document.createElement('div');
-  cart.forEach(line=>{
+  groupCartByBook().forEach(group=>{
+    const lines = group.lines;
+    const first = lines[0];
+    const variantGroups = variantsForLines(lines);
+    const lineTotal = lines.reduce((sum,l) => sum + (parseFloat(l.unitPrice)||0), 0);
+
     const row = document.createElement('div');
     row.className = "cart-line";
-    let meta = line.signed ? "Signed" : "Not signed";
-    if(line.signed && line.personalizedName) meta += ` — personalized to "${escapeHtml(line.personalizedName)}"`;
     row.innerHTML = `
-      <div class="cart-line-cover">${line.coverUrl ? `<img src="${coverSrc(line.coverUrl)}" alt="">` : ""}</div>
+      <div class="cart-line-cover">${first.coverUrl ? `<img src="${coverSrc(first.coverUrl)}" alt="">` : ""}</div>
       <div class="cart-line-info">
-        <div class="cart-line-title">${escapeHtml(line.title)}</div>
-        <div class="cart-line-author">by ${escapeHtml(line.author)}</div>
-        <div class="cart-line-meta">${meta}</div>
-        <div class="cart-line-remove" data-id="${line.cartLineId}">Remove</div>
+        <div class="cart-line-title">${escapeHtml(first.title)}</div>
+        <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
+        <div class="cart-line-variants"></div>
       </div>
-      <div class="cart-line-price">${money(line.unitPrice)}</div>
+      <div class="cart-line-right">
+        <div class="cart-line-price">${money(lineTotal)}</div>
+        <div class="qty-stepper cart-qty-stepper">
+          <button type="button" class="cart-qty-minus">&minus;</button>
+          <span class="qty-val">${lines.length}</span>
+          <button type="button" class="cart-qty-plus">+</button>
+        </div>
+      </div>
     `;
-    row.querySelector('.cart-line-remove').onclick = () => removeCartLine(line.cartLineId);
+
+    const variantsWrap = row.querySelector('.cart-line-variants');
+    variantGroups.forEach(vLines=>{
+      const countPrefix = vLines.length > 1 ? `${vLines.length}× ` : "";
+      const d = document.createElement('div');
+      d.className = "cart-line-meta";
+      d.textContent = countPrefix + variantDescriptionPlain(vLines[0]);
+      variantsWrap.appendChild(d);
+    });
+
+    const removeAllLink = document.createElement('div');
+    removeAllLink.className = "cart-line-remove";
+    removeAllLink.textContent = "Remove all";
+    removeAllLink.onclick = () => {
+      cart = cart.filter(l => l.bookId !== group.bookId);
+      saveCartToStorage();
+      render();
+    };
+    row.querySelector('.cart-line-info').appendChild(removeAllLink);
+
+    row.querySelector('.cart-qty-plus').onclick = () => incrementBookInCart(group.bookId);
+    row.querySelector('.cart-qty-minus').onclick = () => decrementBookInCart(group.bookId);
+
     list.appendChild(row);
   });
   app.appendChild(list);
