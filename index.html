@@ -104,9 +104,31 @@
   .book-price{ margin-top:8px; font-size:14px; }
   .book-price .strike{ text-decoration:line-through; opacity:.55; margin-right:6px; }
   .book-series-pill{
-    display:inline-block; margin-top:6px; font-family:'Montserrat',sans-serif;
+    display:inline-block; margin-top:4px; font-family:'Montserrat',sans-serif;
     font-size:10.5px; font-weight:700; letter-spacing:.03em; color:var(--sage);
     background:rgba(148,161,119,0.15); padding:3px 9px; border-radius:999px;
+  }
+
+  .book-card-actions{ margin-top:10px; }
+  .book-add-btn{
+    font-family:'Montserrat',sans-serif; font-weight:700; font-size:12.5px;
+    letter-spacing:.02em; color:#fff; background:var(--navy);
+    border:none; border-radius:999px; padding:10px 20px; cursor:pointer;
+  }
+  .book-add-btn:active{ transform:scale(0.98); }
+  .book-cart-stepper{
+    display:inline-flex; align-items:center; border:1.5px solid rgba(12,30,61,0.15);
+    border-radius:999px; overflow:hidden; background:var(--cream);
+  }
+  .book-cart-stepper button{
+    background:none; border:none; width:34px; height:34px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--navy);
+    flex-shrink:0;
+  }
+  .book-cart-stepper .book-cart-minus{ color:var(--terracotta); font-size:14px; }
+  .book-cart-stepper .book-cart-count{
+    font-family:'Montserrat',sans-serif; font-weight:700; font-size:11.5px;
+    padding:0 10px; white-space:nowrap;
   }
 
   .empty-state{ text-align:center; padding:60px 20px; color:#777; font-family:'Lora',serif; }
@@ -387,11 +409,70 @@ function renderFormattedBlurb(text){
   html = html.replace(/\*([^\n*]+?)\*/g, '<em>$1</em>');
   return html.replace(/\n/g, '<br>');
 }
+// Price for one specific format of a book (paperback/hardcover/special
+// edition — or a series' own paperback/hardcover/box set pricing, which
+// applies to every book in that series). Falls back to the book's flat
+// regularPrice/soireePrice when that format has no price of its own set —
+// which covers every book saved before the "formats" feature existed
+// (those have no formatPrices at all) and a format an author just hasn't
+// priced yet.
+function bookFormatPriceInfo(book, fmt){
+  const priceMap = (book.isSeries && Array.isArray(book.seriesFormats) && book.seriesFormats.length)
+    ? (book.seriesFormatPrices || {})
+    : (book.formatPrices || {});
+  const fp = priceMap[fmt];
+  if(fp){
+    const s = parseFloat(fp.soiree);
+    const r = parseFloat(fp.regular);
+    const hasS = !isNaN(s) && fp.soiree !== "";
+    const hasR = !isNaN(r) && fp.regular !== "";
+    if(hasS || hasR) return { price: hasS ? s : r, strike: (hasS && hasR) ? r : null };
+  }
+  const flatSoiree = parseFloat(book.soireePrice);
+  const hasFlatSoiree = !isNaN(flatSoiree) && book.soireePrice !== "";
+  const flatReg = parseFloat(book.regularPrice);
+  const hasFlatReg = !isNaN(flatReg) && book.regularPrice !== "";
+  if(hasFlatReg || hasFlatSoiree){
+    return { price: hasFlatSoiree ? flatSoiree : flatReg, strike: hasFlatSoiree ? flatReg : null };
+  }
+  return { price: 0, strike: null };
+}
+
+function formatLabel(fmt){
+  const opt = ALL_FORMAT_OPTIONS.find(o => o.value === fmt);
+  return opt ? opt.label : fmt;
+}
+
+// What to show on the book card: the cheapest format's price (with a
+// "From" label once there's more than one format to choose from).
+function priceDisplayInfo(book){
+  const formats = bookFormats(book);
+  let best = null;
+  formats.forEach(f=>{
+    const info = bookFormatPriceInfo(book, f);
+    if(best === null || info.price < best.price) best = info;
+  });
+  if(best === null) best = { price: 0, strike: null };
+  return { price: best.price, strike: best.strike, fromFormats: formats.length > 1 };
+}
+
+// Used by the "Soirée Pricing" filter chip — true if the book has a
+// discounted price anywhere, either the flat soireePrice field or a
+// soiree price on any of its format variants.
+function hasSoireePrice(book){
+  if(!isNaN(parseFloat(book.soireePrice)) && book.soireePrice !== "") return true;
+  const formats = bookFormats(book);
+  const priceMap = (book.isSeries && Array.isArray(book.seriesFormats) && book.seriesFormats.length)
+    ? (book.seriesFormatPrices || {})
+    : (book.formatPrices || {});
+  return formats.some(f => {
+    const fp = priceMap[f];
+    return fp && fp.soiree !== "" && !isNaN(parseFloat(fp.soiree));
+  });
+}
+
 function effectivePrice(book){
-  const soiree = parseFloat(book.soireePrice);
-  const reg = parseFloat(book.regularPrice);
-  if(!isNaN(soiree) && book.soireePrice !== "") return soiree;
-  return isNaN(reg) ? 0 : reg;
+  return priceDisplayInfo(book).price;
 }
 function seriesEffectivePrice(book){
   const soiree = parseFloat(book.seriesSoireePrice);
@@ -403,8 +484,21 @@ function seriesEffectivePrice(book){
 function updateCartBadge(){
   document.getElementById('cartBadge').textContent = cart.length;
 }
+// Excludes copies that are part of a still-complete series group — those
+// show up on the Cart page as one series line, not a per-book count, so
+// the book's own card shouldn't claim them either.
 function cartCountForBook(bookId){
-  return cart.filter(l => l.bookId === bookId).length;
+  return cart.filter(l => l.bookId === bookId && !(l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId))).length;
+}
+
+// "Book 3 of 5: 'Series Name'" when the author gave a position, otherwise
+// just "Part of 'Series Name'".
+function seriesBadgeText(book){
+  if(!book.isSeries || !book.seriesName) return "";
+  if(book.seriesBookNumber && book.seriesTotalBooks){
+    return `Book ${book.seriesBookNumber} of ${book.seriesTotalBooks}: "${book.seriesName}"`;
+  }
+  return `Part of "${book.seriesName}"`;
 }
 
 /* =========================================================
@@ -629,7 +723,7 @@ function renderBrowse(app){
     const q = searchQuery.trim().toLowerCase();
     let filtered = catalog.filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
     if(filterAuthors.size) filtered = filtered.filter(b => filterAuthors.has(b.author));
-    if(filterSoireeOnly) filtered = filtered.filter(b => b.soireePrice !== "" && !isNaN(parseFloat(b.soireePrice)));
+    if(filterSoireeOnly) filtered = filtered.filter(b => hasSoireePrice(b));
     if(filterSeriesOnly) filtered = filtered.filter(b => b.isSeries);
     if(filterFormats.size) filtered = filtered.filter(b => bookFormats(b).some(f => filterFormats.has(f)));
 
@@ -651,18 +745,17 @@ function renderBrowse(app){
       card.className = "book-card";
       card.onclick = () => openBookFlow(book);
 
-      const price = effectivePrice(book);
-      const reg = parseFloat(book.regularPrice);
-      const hasSoiree = !isNaN(parseFloat(book.soireePrice)) && book.soireePrice !== "";
-      const priceHtml = hasSoiree
-        ? `<span class="strike">${money(reg)}</span><strong>${money(price)}</strong>`
-        : `<strong>${money(price)}</strong>`;
+      const priceInfo = priceDisplayInfo(book);
+      const priceHtml = priceInfo.strike !== null
+        ? `<span class="strike">${money(priceInfo.strike)}</span><strong>${money(priceInfo.price)}</strong>`
+        : `<strong>${priceInfo.fromFormats ? "From " : ""}${money(priceInfo.price)}</strong>`;
 
       const hasBlurb = !!(book.blurb && book.blurb.trim());
       const blurbId = book.id || (book.author + "_" + book.title);
       const isExpanded = expandedBlurbIds.has(blurbId);
 
       const inCartCount = cartCountForBook(book.id);
+      const seriesBadge = seriesBadgeText(book);
 
       card.innerHTML = `
         <div class="book-cover-wrap">
@@ -672,12 +765,20 @@ function renderBrowse(app){
         <div class="book-info">
           <div class="book-title">${escapeHtml(book.title)}</div>
           <div class="book-author">by ${escapeHtml(book.author)}</div>
+          ${seriesBadge ? `<div class="book-series-pill">${escapeHtml(seriesBadge)}</div>` : ""}
           ${book.tagLine ? `<div class="book-tagline">${escapeHtml(book.tagLine)}</div>` : ""}
           ${hasBlurb ? `<div class="book-blurb-toggle">${isExpanded ? "see less…" : "show more…"}</div>` : ""}
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
-          ${book.isSeries && book.seriesName ? `<div class="book-series-pill">Part of "${escapeHtml(book.seriesName)}"</div>` : ""}
-          ${inCartCount > 0 ? `<div class="book-cart-badge">${inCartCount} ${inCartCount===1?"copy":"copies"} in your cart</div>` : ""}
+          <div class="book-card-actions">
+            ${inCartCount > 0 ? `
+              <div class="book-cart-stepper">
+                <button type="button" class="book-cart-minus" title="Remove">${inCartCount === 1 ? "&#128465;" : "&minus;"}</button>
+                <span class="book-cart-count">${inCartCount} in cart</span>
+                <button type="button" class="book-cart-plus">+</button>
+              </div>
+            ` : `<button type="button" class="book-add-btn">Add to cart</button>`}
+          </div>
         </div>
       `;
 
@@ -691,6 +792,22 @@ function renderBrowse(app){
           blurbEl.style.display = nowExpanded ? "block" : "none";
           toggle.textContent = nowExpanded ? "see less…" : "show more…";
         };
+      }
+
+      // Cart controls live right on the card (Amazon-style), separate from
+      // tapping the cover/title (which still opens the full flow — useful
+      // for a series, where that's how you choose whole-series vs one book).
+      const addBtn = card.querySelector('.book-add-btn');
+      if(addBtn){
+        addBtn.onclick = (e) => { e.stopPropagation(); openBookFlow(book); };
+      }
+      const plusBtn = card.querySelector('.book-cart-plus');
+      const minusBtn = card.querySelector('.book-cart-minus');
+      if(plusBtn){
+        plusBtn.onclick = (e) => { e.stopPropagation(); incrementBookInCart(book.id); };
+      }
+      if(minusBtn){
+        minusBtn.onclick = (e) => { e.stopPropagation(); decrementBookInCart(book.id); };
       }
 
       grid.appendChild(card);
@@ -784,30 +901,65 @@ function openSeriesListModal(book, siblings){
 
 /* ---- Single-book flow: quantity -> signed -> (how many, if qty>1) ->
    personalized -> name(s) ---- */
-function openSingleBookFlow(book){
-  let qty = 1;
+// A book that comes in more than one format (paperback/hardcover/special
+// edition) asks which one first, with each format's price shown — skipped
+// entirely for a book with just one format (including every book saved
+// before the formats feature existed).
+function openFormatQuestion(book, onPicked){
+  const formats = bookFormats(book);
+  if(formats.length <= 1){ onPicked(formats[0] || "paperback"); return; }
+
+  const optionsHtml = formats.map((f,i)=>{
+    const info = bookFormatPriceInfo(book, f);
+    const priceHtml = info.strike !== null
+      ? `<span class="strike">${money(info.strike)}</span> <strong>${money(info.price)}</strong>`
+      : `<strong>${money(info.price)}</strong>`;
+    return `<div class="radio-option" data-fi="${i}"><span>${escapeHtml(formatLabel(f))}</span><span style="margin-left:auto;">${priceHtml}</span></div>`;
+  }).join("");
+
   openModal(`
     <div class="eyebrow">${escapeHtml(book.author)}</div>
     <div class="modal-title">${escapeHtml(book.title)}</div>
-    <div class="modal-sub">${money(effectivePrice(book))} each</div>
-    <div class="field">
-      <label>How many copies?</label>
-      <div class="qty-stepper">
-        <button id="qtyMinus">&minus;</button>
-        <span class="qty-val" id="qtyVal">1</span>
-        <button id="qtyPlus">+</button>
-      </div>
-    </div>
-    <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
+    <div class="modal-sub">Which format would you like?</div>
+    <div class="radio-group">${optionsHtml}</div>
   `, (card)=>{
-    const qtyVal = card.querySelector('#qtyVal');
-    card.querySelector('#qtyMinus').onclick = () => { qty = Math.max(1, qty-1); qtyVal.textContent = qty; };
-    card.querySelector('#qtyPlus').onclick = () => { qty = Math.min(20, qty+1); qtyVal.textContent = qty; };
-    card.querySelector('#qtyNextBtn').onclick = () => { closeModal(); openSignedQuestion(book, qty); };
+    card.querySelectorAll('.radio-option').forEach(el=>{
+      el.onclick = () => {
+        closeModal();
+        onPicked(formats[parseInt(el.dataset.fi, 10)]);
+      };
+    });
   });
 }
 
-function openSignedQuestion(book, qty){
+function openSingleBookFlow(book){
+  openFormatQuestion(book, (format) => {
+    let qty = 1;
+    const unitInfo = bookFormatPriceInfo(book, format);
+    const formatPrefix = bookFormats(book).length > 1 ? `${escapeHtml(formatLabel(format))} — ` : "";
+    openModal(`
+      <div class="eyebrow">${escapeHtml(book.author)}</div>
+      <div class="modal-title">${escapeHtml(book.title)}</div>
+      <div class="modal-sub">${formatPrefix}${money(unitInfo.price)} each</div>
+      <div class="field">
+        <label>How many copies?</label>
+        <div class="qty-stepper">
+          <button id="qtyMinus">&minus;</button>
+          <span class="qty-val" id="qtyVal">1</span>
+          <button id="qtyPlus">+</button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
+    `, (card)=>{
+      const qtyVal = card.querySelector('#qtyVal');
+      card.querySelector('#qtyMinus').onclick = () => { qty = Math.max(1, qty-1); qtyVal.textContent = qty; };
+      card.querySelector('#qtyPlus').onclick = () => { qty = Math.min(20, qty+1); qtyVal.textContent = qty; };
+      card.querySelector('#qtyNextBtn').onclick = () => { closeModal(); openSignedQuestion(book, qty, format); };
+    });
+  });
+}
+
+function openSignedQuestion(book, qty, format){
   const askText = qty === 1 ? "Do you want this book signed?" : "Do you want any of these books signed?";
   openModal(`
     <div class="modal-title">${askText}</div>
@@ -818,17 +970,17 @@ function openSignedQuestion(book, qty){
   `, (card)=>{
     card.querySelector('#signedNo').onclick = () => {
       closeModal();
-      addLinesToCart(makeUnsignedLines(book, qty));
+      addLinesToCart(makeUnsignedLines(book, qty, format));
     };
     card.querySelector('#signedYes').onclick = () => {
       closeModal();
-      if(qty === 1) openPersonalizedQuestion(book, [{signed:true}], (lines)=> addLinesToCart(lines.concat(makeUnsignedLines(book, 0))));
-      else openHowManySigned(book, qty);
+      if(qty === 1) openPersonalizedQuestion(book, [{signed:true}], (lines)=> addLinesToCart(lines.concat(makeUnsignedLines(book, 0, format))), format);
+      else openHowManySigned(book, qty, format);
     };
   });
 }
 
-function openHowManySigned(book, qty){
+function openHowManySigned(book, qty, format){
   let howMany = qty;
   openModal(`
     <div class="modal-title">How many of the ${qty} would you like signed?</div>
@@ -849,15 +1001,15 @@ function openHowManySigned(book, qty){
       closeModal();
       const signedPlaceholders = Array.from({length: howMany}, () => ({signed:true}));
       openPersonalizedQuestion(book, signedPlaceholders, (lines) => {
-        addLinesToCart(lines.concat(makeUnsignedLines(book, qty - howMany)));
-      });
+        addLinesToCart(lines.concat(makeUnsignedLines(book, qty - howMany, format)));
+      }, format);
     };
   });
 }
 
 // entries: array of {signed:true} objects, one per copy that will be signed.
 // onDone receives the finished cart line objects for those signed copies.
-function openPersonalizedQuestion(book, entries, onDone){
+function openPersonalizedQuestion(book, entries, onDone, format){
   const askText = entries.length === 1 ? "Do you want it personalized?" : "Do you want these books personalized?";
   openModal(`
     <div class="modal-title">${askText}</div>
@@ -868,14 +1020,14 @@ function openPersonalizedQuestion(book, entries, onDone){
   `, (card)=>{
     card.querySelector('#persNo').onclick = () => {
       closeModal();
-      onDone(entries.map(() => makeCartLine(book, true, "")));
+      onDone(entries.map(() => makeCartLine(book, true, "", undefined, undefined, format)));
     };
     card.querySelector('#persYes').onclick = () => {
       closeModal();
       if(entries.length === 1){
-        openNameFields(book, 1, (names) => onDone([makeCartLine(book, true, names[0])]));
+        openNameFields(book, 1, (names) => onDone([makeCartLine(book, true, names[0], undefined, undefined, format)]));
       } else {
-        openNameFields(book, entries.length, (names) => onDone(names.map(n => makeCartLine(book, true, n))));
+        openNameFields(book, entries.length, (names) => onDone(names.map(n => makeCartLine(book, true, n, undefined, undefined, format))));
       }
     };
   });
@@ -971,14 +1123,16 @@ function startGroupSigningFlow(books){
   });
 }
 
-function makeCartLine(book, signed, personalizedName, priceOverride, seriesGroupId){
+function makeCartLine(book, signed, personalizedName, priceOverride, seriesGroupId, format){
+  const formats = bookFormats(book);
+  const fmt = format || formats[0] || "paperback";
   return {
     cartLineId: 'cl_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8),
     bookId: book.id,
     author: book.author,
     title: book.title,
     coverUrl: book.coverUrl,
-    unitPrice: priceOverride !== undefined ? priceOverride : effectivePrice(book),
+    unitPrice: priceOverride !== undefined ? priceOverride : bookFormatPriceInfo(book, fmt).price,
     signed: !!signed,
     personalizedName: personalizedName || "",
     // Set only when this copy was added as part of a "whole series" / "a
@@ -986,11 +1140,16 @@ function makeCartLine(book, signed, personalizedName, priceOverride, seriesGroup
     // series row instead of one row per book.
     seriesGroupId: seriesGroupId || null,
     seriesName: book.seriesName || "",
-    seriesCoverUrl: book.seriesHasCover === "Yes" && book.seriesCoverUrl ? book.seriesCoverUrl : ""
+    seriesCoverUrl: book.seriesHasCover === "Yes" && book.seriesCoverUrl ? book.seriesCoverUrl : "",
+    // Only shown in the cart when the book actually has more than one
+    // format — no point labeling "Paperback" on a book that only comes
+    // one way.
+    format: fmt,
+    formatLabel: formats.length > 1 ? formatLabel(fmt) : ""
   };
 }
-function makeUnsignedLines(book, count){
-  return Array.from({length: Math.max(0,count)}, () => makeCartLine(book, false, ""));
+function makeUnsignedLines(book, count, format){
+  return Array.from({length: Math.max(0,count)}, () => makeCartLine(book, false, "", undefined, undefined, format));
 }
 
 function addLinesToCart(lines){
@@ -1040,57 +1199,79 @@ function groupCartByBook(){
   const map = new Map();
   cart.forEach(line=>{
     const asSeries = line.seriesGroupId && isSeriesGroupComplete(line.seriesGroupId);
-    const key = asSeries ? ("series:" + line.seriesGroupId) : ("book:" + line.bookId);
+    // Different formats of the same book (paperback vs. hardcover, say)
+    // get their own cart row rather than being merged into one — so the
+    // format is part of the grouping key, not just the book.
+    const key = asSeries ? ("series:" + line.seriesGroupId) : ("book:" + line.bookId + "|" + (line.format || ""));
     if(!map.has(key)){ map.set(key, []); order.push(key); }
     map.get(key).push(line);
   });
   return order.map(key => {
     const lines = map.get(key);
     const isSeriesGroup = key.indexOf("series:") === 0;
-    return { groupKey: key, bookId: lines[0].bookId, isSeriesGroup, seriesGroupId: isSeriesGroup ? lines[0].seriesGroupId : null, lines };
+    return {
+      groupKey: key,
+      bookId: lines[0].bookId,
+      format: isSeriesGroup ? null : lines[0].format,
+      isSeriesGroup,
+      seriesGroupId: isSeriesGroup ? lines[0].seriesGroupId : null,
+      lines
+    };
   });
 }
 function variantsForLines(lines){
   const order = [];
   const map = new Map();
   lines.forEach(line=>{
-    const key = (line.signed ? "1" : "0") + "|" + (line.personalizedName || "");
+    // Format is part of the variant key too, so a paperback copy and a
+    // hardcover copy of the same book show as their own sub-lines instead
+    // of being merged into one count.
+    const key = (line.format || "") + "|" + (line.signed ? "1" : "0") + "|" + (line.personalizedName || "");
     if(!map.has(key)){ map.set(key, []); order.push(key); }
     map.get(key).push(line);
   });
   return order.map(key => map.get(key));
 }
 function variantDescriptionPlain(line){
-  if(line.signed && line.personalizedName) return `Signed — personalized to "${line.personalizedName}"`;
-  if(line.signed) return "Signed";
-  return "Not signed";
+  const prefix = line.formatLabel ? `${line.formatLabel} — ` : "";
+  if(line.signed && line.personalizedName) return `${prefix}Signed — personalized to "${line.personalizedName}"`;
+  if(line.signed) return `${prefix}Signed`;
+  return `${prefix}Not signed`;
 }
 
 // "+" on a book's cart row adds exactly one new copy, and a new copy is a
 // fresh decision — so it goes through the same signed/personalized
 // question flow as adding it from Browse, just skipping the "how many"
-// step since this is always +1.
-function incrementBookInCart(bookId){
+// step since this is always +1. A row on the Cart page is already pinned
+// to one format (each format gets its own row there), so its "+" passes
+// that format straight through with no need to ask again; the Browse
+// grid's combined "+" (no format passed) still asks, same as a fresh add.
+function incrementBookInCart(bookId, format){
   let book = catalog.find(b => b.id === bookId);
   if(!book){
-    const existing = cart.find(l => l.bookId === bookId);
+    const existing = cart.find(l => l.bookId === bookId && (!format || l.format === format));
     if(!existing) return;
     // Catalog not loaded (or the book's been pulled) — fall back to what
     // the existing cart line already knows, so the flow still has a
     // title/author/cover/price to show.
     book = { id: bookId, author: existing.author, title: existing.title, coverUrl: existing.coverUrl, regularPrice: existing.unitPrice, soireePrice: "" };
   }
-  openSignedQuestion(book, 1);
+  if(format){
+    openSignedQuestion(book, 1, format);
+  }else{
+    openFormatQuestion(book, (fmt) => openSignedQuestion(book, 1, fmt));
+  }
 }
 
-// "-" on a book's cart row: if every copy of that book is identical
-// (same signed/personalization), just drop one — it doesn't matter which.
-// If there's more than one variant, which copy to remove is genuinely
-// ambiguous, so ask.
-function decrementBookInCart(bookId){
+// "-" on a book's cart row: if every copy of that book (in that format,
+// when called from a Cart page row) is identical (same signed/
+// personalization), just drop one — it doesn't matter which. If there's
+// more than one variant, which copy to remove is genuinely ambiguous, so
+// ask.
+function decrementBookInCart(bookId, format){
   // Excludes copies that are part of a still-complete series group — those
   // are managed via the series row's own remove flow, not this stepper.
-  const lines = cart.filter(l => l.bookId === bookId && !(l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)));
+  const lines = cart.filter(l => l.bookId === bookId && (!format || l.format === format) && !(l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)));
   if(lines.length === 0) return;
   const variantGroups = variantsForLines(lines);
   if(variantGroups.length === 1){
@@ -1269,11 +1450,17 @@ function renderCart(app){
       return;
     }
 
+    // Different formats of the same book are already split into their own
+    // group by groupCartByBook, so every variant line left to show here is
+    // just a signed/personalization difference within that one format —
+    // the format itself (when the book has more than one) is named once,
+    // right under the title, instead of repeated on every variant line.
     const variantGroups = variantsForLines(lines);
     row.innerHTML = `
       <div class="cart-line-cover">${first.coverUrl ? `<img src="${coverSrc(first.coverUrl)}" alt="">` : ""}</div>
       <div class="cart-line-info">
         <div class="cart-line-title">${escapeHtml(first.title)}</div>
+        ${first.formatLabel ? `<div class="cart-line-meta" style="font-weight:700;color:var(--navy);">${escapeHtml(first.formatLabel)}</div>` : ""}
         <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
         <div class="cart-line-variants"></div>
       </div>
@@ -1292,22 +1479,23 @@ function renderCart(app){
       const countPrefix = vLines.length > 1 ? `${vLines.length}× ` : "";
       const d = document.createElement('div');
       d.className = "cart-line-meta";
-      d.textContent = countPrefix + variantDescriptionPlain(vLines[0]);
+      d.textContent = countPrefix + (vLines[0].signed && vLines[0].personalizedName ? `Signed — personalized to "${vLines[0].personalizedName}"` : (vLines[0].signed ? "Signed" : "Not signed"));
       variantsWrap.appendChild(d);
     });
 
     const removeAllLink = document.createElement('div');
     removeAllLink.className = "cart-line-remove";
     removeAllLink.textContent = "Remove all";
+    const lineIds = new Set(lines.map(l => l.cartLineId));
     removeAllLink.onclick = () => {
-      cart = cart.filter(l => l.bookId !== group.bookId || l.seriesGroupId);
+      cart = cart.filter(l => !lineIds.has(l.cartLineId));
       saveCartToStorage();
       render();
     };
     row.querySelector('.cart-line-info').appendChild(removeAllLink);
 
-    row.querySelector('.cart-qty-plus').onclick = () => incrementBookInCart(group.bookId);
-    row.querySelector('.cart-qty-minus').onclick = () => decrementBookInCart(group.bookId);
+    row.querySelector('.cart-qty-plus').onclick = () => incrementBookInCart(group.bookId, group.format);
+    row.querySelector('.cart-qty-minus').onclick = () => decrementBookInCart(group.bookId, group.format);
 
     list.appendChild(row);
   });
