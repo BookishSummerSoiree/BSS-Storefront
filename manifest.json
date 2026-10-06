@@ -3,8 +3,8 @@
   "short_name": "Soiree Store",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#F7EFE1",
-  "theme_color": "#F7EFE1",
+  "background_color": "#F4EFEA",
+  "theme_color": "#F4EFEA",
   "icons": [
     {
       "src": "icon-192.png",
