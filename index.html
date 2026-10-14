@@ -368,7 +368,7 @@ let stagedAuthorFilter = new Set();
 const ALL_FORMAT_OPTIONS = [
   {value:"paperback", label:"Paperback"},
   {value:"hardcover", label:"Hardcover"},
-  {value:"specialEdition", label:"Special Edition"},
+,
   {value:"boxSet", label:"Box Set"}
 ];
 let filterFormats = new Set();
@@ -382,13 +382,7 @@ function bookFormats(book){
   const list = book.formats;
   return (Array.isArray(list) && list.length) ? list : ["paperback"];
 }
-// For the format filter chips only: a series that is also sold as a box set
-// should turn up under "Box Set".
-function bookFormatsForFilter(book){
-  const f = bookFormats(book).slice();
-  if(book.isSeries && Array.isArray(book.seriesFormats) && book.seriesFormats.indexOf("boxSet") !== -1 && f.indexOf("boxSet") === -1) f.push("boxSet");
-  return f;
-}
+function bookFormatsForFilter(book){ return bookFormats(book); }
 
 function loadCartFromStorage(){
   try{
