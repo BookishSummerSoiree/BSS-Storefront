@@ -118,6 +118,13 @@
     border:none; border-radius:999px; padding:10px 20px; cursor:pointer;
   }
   .book-add-btn:active{ transform:scale(0.98); }
+  .book-single-btn{
+    font-family:'Montserrat',sans-serif; font-weight:700; font-size:12px;
+    letter-spacing:.02em; color:var(--navy); background:#fff;
+    border:1.5px solid var(--navy); border-radius:999px; padding:8px 16px; cursor:pointer;
+    margin-top:8px;
+  }
+  .book-single-btn:active{ transform:scale(0.98); }
   .book-cart-stepper{
     display:inline-flex; align-items:center; border:1.5px solid rgba(12,30,61,0.15);
     border-radius:999px; overflow:hidden; background:var(--cream);
@@ -844,21 +851,22 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
           <div class="book-card-actions">
-            ${seriesSetsInCart > 0 ? `
+            ${book.isSeries ? (seriesSetsInCart > 0 ? `
               <div class="book-cart-stepper book-series-set-stepper" title="Whole series, as a set">
                 <button type="button" class="book-series-set-minus" title="Remove a set">${seriesSetsInCart === 1 ? "&#128465;" : "&minus;"}</button>
                 <span class="book-cart-count" style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;">${seriesSetsInCart} set${seriesSetsInCart === 1 ? "" : "s"} of this series ${seriesSetsInCart === 1 ? "is" : "are"} in your cart</span>
                 <button type="button" class="book-series-set-plus">+</button>
               </div>
-            ` : ""}
+            ` : `<button type="button" class="book-add-btn book-series-add-btn">Add entire series to cart</button>`) : ""}
             ${inCartCount > 0 ? `
-              <div class="book-cart-stepper"${seriesSetsInCart > 0 ? ' style="margin-top:8px;"' : ""}>
+              <div class="book-cart-stepper"${book.isSeries ? ' style="margin-top:8px;"' : ""}>
                 <button type="button" class="book-cart-minus" title="Remove">${inCartCount === 1 ? "&#128465;" : "&minus;"}</button>
                 <span class="book-cart-count"${seriesSetsInCart > 0 ? ' style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;"' : ""}>${seriesSetsInCart > 0 ? `${inCartCount} single book${inCartCount === 1 ? "" : "s"} in cart` : `${inCartCount} in cart`}</span>
                 <button type="button" class="book-cart-plus">+</button>
               </div>
-            ` : ""}
-            ${(seriesSetsInCart === 0 && inCartCount === 0) ? `<button type="button" class="book-add-btn">Add to cart</button>` : ""}
+            ` : (book.isSeries
+                ? `<div><button type="button" class="book-single-btn book-single-add">Add to cart</button></div>`
+                : `<button type="button" class="book-add-btn">Add to cart</button>`)}
           </div>
         </div>
       `;
@@ -878,9 +886,23 @@ function renderBrowse(app){
       // Cart controls live right on the card (Amazon-style), separate from
       // tapping the cover/title (which still opens the full flow — useful
       // for a series, where that's how you choose whole-series vs one book).
-      const addBtn = card.querySelector('.book-add-btn');
+      // Standalone book: "Add to cart" runs the normal flow. Series book:
+      // two clear buttons — add the whole series, or add just this book.
+      const addBtn = card.querySelector('.book-add-btn:not(.book-series-add-btn)');
       if(addBtn){
         addBtn.onclick = (e) => { e.stopPropagation(); openBookFlow(book); };
+      }
+      const seriesAddBtn = card.querySelector('.book-series-add-btn');
+      if(seriesAddBtn){
+        seriesAddBtn.onclick = (e) => {
+          e.stopPropagation();
+          if(cartSeriesCountForBook(book.id) > 0){ confirmAddAnotherSeriesSet(seriesSiblings(book), book); return; }
+          startGroupSigningFlow(seriesSiblings(book));
+        };
+      }
+      const singleBtn = card.querySelector('.book-single-btn');
+      if(singleBtn){
+        singleBtn.onclick = (e) => { e.stopPropagation(); openSingleBookFlow(book); };
       }
       const plusBtn = card.querySelector('.book-cart-plus');
       const minusBtn = card.querySelector('.book-cart-minus');
@@ -1338,7 +1360,13 @@ function addLinesToCart(lines){
   saveCartToStorage();
   updateCartBadge();
   showToast(lines.length === 1 ? "Added to cart" : `Added ${lines.length} books to cart`);
-  if(currentScreen === "cart") render();
+  // Refresh the screen so the book cards / cart show what was just added
+  // (keeping the page where it was, so it doesn't jump back to the top).
+  if(currentScreen === "cart" || currentScreen === "browse"){
+    const y = window.scrollY;
+    render();
+    window.scrollTo(0, y);
+  }
 }
 
 function removeCartLine(cartLineId){
