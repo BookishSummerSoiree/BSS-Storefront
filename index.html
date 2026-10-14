@@ -523,18 +523,23 @@ function completeSeriesGroupIdsFor(author, seriesName){
 }
 // Asks before adding a second (or third...) complete set of the same
 // series, instead of silently stacking duplicate series lines in the cart.
-function confirmAddAnotherSeriesSet(siblings){
+function confirmAddAnotherSeriesSet(siblings, book){
   openModal(`
     <div class="modal-title">Wait, this series is already in your cart.</div>
     <div class="modal-sub">Would you like to add another?</div>
     <div class="btn-row" style="flex-direction:column;align-items:stretch;">
-      <button class="btn btn-primary" id="addAnotherYes">Yes, add another</button>
+      <button class="btn btn-primary" id="addAnotherYes">Yes, add another series</button>
+      <button class="btn btn-secondary" id="addAnotherOne" style="margin-top:10px;">Just this book</button>
       <button class="btn btn-secondary" id="addAnotherNo" style="margin-top:10px;">No thanks</button>
     </div>
   `, (card)=>{
     card.querySelector('#addAnotherYes').onclick = () => {
       closeModal();
       startGroupSigningFlow(siblings);
+    };
+    card.querySelector('#addAnotherOne').onclick = () => {
+      closeModal();
+      if(book) openSingleBookFlow(book);
     };
     card.querySelector('#addAnotherNo').onclick = () => closeModal();
   });
@@ -848,7 +853,7 @@ function renderBrowse(app){
             ` : seriesSetsInCart > 0 ? `
               <div class="book-cart-stepper book-series-set-stepper" title="Whole series, as a set">
                 <button type="button" class="book-series-set-minus" title="Remove a set">${seriesSetsInCart === 1 ? "&#128465;" : "&minus;"}</button>
-                <span class="book-cart-count">${seriesSetsInCart} set${seriesSetsInCart === 1 ? "" : "s"} in cart</span>
+                <span class="book-cart-count" style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;">${seriesSetsInCart} set${seriesSetsInCart === 1 ? "" : "s"} of this series ${seriesSetsInCart === 1 ? "is" : "are"} in your cart</span>
                 <button type="button" class="book-series-set-plus">+</button>
               </div>
             ` : `<button type="button" class="book-add-btn">Add to cart</button>`}
@@ -951,7 +956,7 @@ function openSeriesChoiceModal(book){
       // complete series line (e.g. they already added it from a different
       // book in the same series) — ask before stacking a duplicate set.
       if(cartSeriesCountForBook(book.id) > 0){
-        confirmAddAnotherSeriesSet(siblings);
+        confirmAddAnotherSeriesSet(siblings, book);
         return;
       }
       startGroupSigningFlow(siblings);
@@ -990,7 +995,7 @@ function openSeriesListModal(book, siblings){
     card.querySelector('#addWholeBtn').onclick = () => {
       closeModal();
       if(cartSeriesCountForBook(book.id) > 0){
-        confirmAddAnotherSeriesSet(siblings);
+        confirmAddAnotherSeriesSet(siblings, book);
         return;
       }
       startGroupSigningFlow(siblings);
