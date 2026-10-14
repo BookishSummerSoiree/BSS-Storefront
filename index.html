@@ -826,7 +826,7 @@ function renderBrowse(app){
       const isExpanded = expandedBlurbIds.has(blurbId);
 
       const inCartCount = cartCountForBook(book.id);
-      const seriesSetIds = (inCartCount === 0 && book.isSeries) ? completeSeriesGroupIdsFor(book.author, book.seriesName) : [];
+      const seriesSetIds = book.isSeries ? completeSeriesGroupIdsFor(book.author, book.seriesName) : [];
       const seriesSetsInCart = seriesSetIds.length;
       const seriesBadge = seriesBadgeText(book);
 
@@ -844,19 +844,21 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
           <div class="book-card-actions">
-            ${inCartCount > 0 ? `
-              <div class="book-cart-stepper">
-                <button type="button" class="book-cart-minus" title="Remove">${inCartCount === 1 ? "&#128465;" : "&minus;"}</button>
-                <span class="book-cart-count">${inCartCount} in cart</span>
-                <button type="button" class="book-cart-plus">+</button>
-              </div>
-            ` : seriesSetsInCart > 0 ? `
+            ${seriesSetsInCart > 0 ? `
               <div class="book-cart-stepper book-series-set-stepper" title="Whole series, as a set">
                 <button type="button" class="book-series-set-minus" title="Remove a set">${seriesSetsInCart === 1 ? "&#128465;" : "&minus;"}</button>
                 <span class="book-cart-count" style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;">${seriesSetsInCart} set${seriesSetsInCart === 1 ? "" : "s"} of this series ${seriesSetsInCart === 1 ? "is" : "are"} in your cart</span>
                 <button type="button" class="book-series-set-plus">+</button>
               </div>
-            ` : `<button type="button" class="book-add-btn">Add to cart</button>`}
+            ` : ""}
+            ${inCartCount > 0 ? `
+              <div class="book-cart-stepper"${seriesSetsInCart > 0 ? ' style="margin-top:8px;"' : ""}>
+                <button type="button" class="book-cart-minus" title="Remove">${inCartCount === 1 ? "&#128465;" : "&minus;"}</button>
+                <span class="book-cart-count"${seriesSetsInCart > 0 ? ' style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;"' : ""}>${seriesSetsInCart > 0 ? `${inCartCount} single book${inCartCount === 1 ? "" : "s"} in cart` : `${inCartCount} in cart`}</span>
+                <button type="button" class="book-cart-plus">+</button>
+              </div>
+            ` : ""}
+            ${(seriesSetsInCart === 0 && inCartCount === 0) ? `<button type="button" class="book-add-btn">Add to cart</button>` : ""}
           </div>
         </div>
       `;
@@ -893,7 +895,7 @@ function renderBrowse(app){
       if(seriesSetPlusBtn){
         seriesSetPlusBtn.onclick = (e) => {
           e.stopPropagation();
-          confirmAddAnotherSeriesSet(seriesSiblings(book));
+          confirmAddAnotherSeriesSet(seriesSiblings(book), book);
         };
       }
       if(seriesSetMinusBtn){
