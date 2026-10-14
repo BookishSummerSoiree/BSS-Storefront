@@ -511,11 +511,14 @@ function seriesEffectivePrice(book){
 // "Series discount of 10%" / "Series discount of $5.00" (empty if none).
 function seriesDiscountLabel(book){
   const d = book.seriesDiscount;
-  const v = d ? parseFloat(d.value) : NaN;
-  if(!d || isNaN(v) || v <= 0 || (d.type !== "percent" && d.type !== "dollar")) return "";
   const i = seriesSetInfo(book);
-  if(!i || i.strike === null) return "";
-  return "Series discount of " + (d.type === "percent" ? (v + "%") : ("$" + v.toFixed(2)));
+  if(!d || !i || i.strike === null) return "";
+  let pct = null;
+  if(d.type === "percent" || (d.type === "books" && d.basis === "percent")) pct = parseFloat(d.value);
+  else if(!(d.type === "dollar" || d.type === "books")) return "";
+  const amt = (i.strike - i.price);
+  if(!(amt > 0)) return "";
+  return "Series discount of " + (pct > 0 ? (pct + "%") : ("$" + amt.toFixed(2)));
 }
 function seriesPriceHtml(book){
   const i = seriesSetInfo(book);
@@ -879,7 +882,7 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
           <div class="book-card-actions">
-            ${(book.isSeries && seriesDiscountLabel(book)) ? `<div style="font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);margin-bottom:4px;">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
+            ${(book.isSeries && seriesSetInfo(book)) ? `<div style="font-size:13px;margin-bottom:6px;line-height:1.3;">Whole series: ${seriesPriceHtml(book)}</div>` : ""}
             ${book.isSeries ? (seriesSetsInCart > 0 ? `
               <div class="book-cart-stepper book-series-set-stepper" title="Whole series, as a set">
                 <button type="button" class="book-series-set-minus" title="Remove a set">${seriesSetsInCart === 1 ? "&#128465;" : "&minus;"}</button>
