@@ -903,13 +903,19 @@ function renderBrowse(app){
       if(hasBlurb){
         const toggle = card.querySelector('.book-blurb-toggle');
         const blurbEl = card.querySelector('.book-blurb');
-        toggle.onclick = (e) => {
+        const toggleBlurb = (e) => {
           e.stopPropagation();
           const nowExpanded = !expandedBlurbIds.has(blurbId);
           if(nowExpanded){ expandedBlurbIds.add(blurbId); } else { expandedBlurbIds.delete(blurbId); }
           blurbEl.style.display = nowExpanded ? "block" : "none";
           toggle.textContent = nowExpanded ? "see less…" : "show more…";
         };
+        toggle.onclick = toggleBlurb;
+        // Tapping the cover or the title does the same as "show more".
+        ['.book-cover-wrap', '.book-title'].forEach(sel => {
+          const el = card.querySelector(sel);
+          if(el){ el.style.cursor = "pointer"; el.onclick = toggleBlurb; }
+        });
       }
 
       // Cart controls live right on the card (Amazon-style), separate from
