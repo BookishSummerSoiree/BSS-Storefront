@@ -371,7 +371,7 @@ let stagedAuthorFilter = new Set();
 const ALL_FORMAT_OPTIONS = [
   {value:"paperback", label:"Paperback"},
   {value:"hardcover", label:"Hardcover"},
-,
+  {value:"specialEdition", label:"Special Edition"},
   {value:"boxSet", label:"Box Set"}
 ];
 let filterFormats = new Set();
@@ -454,9 +454,15 @@ function bookFormatPriceInfo(book, fmt){
   return { price: 0, strike: null };
 }
 
-function formatLabel(fmt){
-  const opt = ALL_FORMAT_OPTIONS.find(o => o.value === fmt);
-  return opt ? opt.label : fmt;
+function formatLabel(fmt, book){
+  const opt = ALL_FORMAT_OPTIONS.find(o => o && o.value === fmt);
+  let label = opt ? opt.label : fmt;
+  // A special edition says why it is special: "Special Edition: Sprayed edges".
+  if(fmt === "specialEdition" && book && book.specialEditionNote && String(book.specialEditionNote).trim()){
+    const n = String(book.specialEditionNote).trim();
+    label += ": " + n.charAt(0).toUpperCase() + n.slice(1);
+  }
+  return label;
 }
 
 // What to show on the book card: the cheapest format's price (with a
@@ -894,6 +900,7 @@ function renderBrowse(app){
           <div class="book-title">${escapeHtml(book.title)}</div>
           <div class="book-author">by ${escapeHtml(book.author)}</div>
           ${seriesBadge ? `<div class="book-series-pill">${escapeHtml(seriesBadge)}</div>` : ""}
+          ${(bookFormats(book).length === 1 && bookFormats(book)[0] === "specialEdition") ? `<div style="font-size:13px;font-style:italic;opacity:.8;margin:2px 0 4px;">${escapeHtml(formatLabel("specialEdition", book))}</div>` : ""}
           ${book.tagLine ? `<div class="book-tagline">${escapeHtml(book.tagLine)}</div>` : ""}
           ${hasBlurb ? `<div class="book-blurb-toggle">${isExpanded ? "see less…" : "show more…"}</div>` : ""}
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
@@ -1106,7 +1113,7 @@ function openFormatQuestion(book, onPicked){
     const priceHtml = info.strike !== null
       ? `<span class="strike">${money(info.strike)}</span> <strong>${money(info.price)}</strong>`
       : `<strong>${money(info.price)}</strong>`;
-    return `<div class="radio-option" data-fi="${i}"><span>${escapeHtml(formatLabel(f))}</span><span style="margin-left:auto;">${priceHtml}</span></div>`;
+    return `<div class="radio-option" data-fi="${i}"><span>${escapeHtml(formatLabel(f, book))}</span><span style="margin-left:auto;">${priceHtml}</span></div>`;
   }).join("");
 
   openModal(`
@@ -1128,7 +1135,7 @@ function openSingleBookFlow(book){
   openFormatQuestion(book, (format) => {
     let qty = 1;
     const unitInfo = bookFormatPriceInfo(book, format);
-    const formatPrefix = bookFormats(book).length > 1 ? `${escapeHtml(formatLabel(format))} — ` : "";
+    const formatPrefix = (bookFormats(book).length > 1 || format === "specialEdition") ? `${escapeHtml(formatLabel(format, book))} — ` : "";
     openModal(`
       <div class="eyebrow">${escapeHtml(book.author)}</div>
       <div class="modal-title">${escapeHtml(book.title)}</div>
@@ -1417,7 +1424,7 @@ function makeCartLine(book, signed, personalizedName, priceOverride, seriesGroup
     // format — no point labeling "Paperback" on a book that only comes
     // one way.
     format: fmt,
-    formatLabel: formats.length > 1 ? formatLabel(fmt) : ""
+    formatLabel: (formats.length > 1 || fmt === "specialEdition") ? formatLabel(fmt, book) : ""
   };
 }
 function makeUnsignedLines(book, count, format){
