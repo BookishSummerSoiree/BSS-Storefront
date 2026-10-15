@@ -1903,6 +1903,15 @@ async function loadMyOrders(){
 }
 
 function renderOrders(app){
+  renderOrdersInner(app);
+  const cont = document.createElement('button');
+  cont.className = "btn btn-primary btn-block";
+  cont.style.marginTop = "16px";
+  cont.textContent = "Continue browsing";
+  cont.onclick = goBrowse;
+  app.appendChild(cont);
+}
+function renderOrdersInner(app){
   const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const heading = document.createElement('div');
   heading.className = "modal-title";
