@@ -523,6 +523,16 @@ function seriesDiscountLabel(book){
   if(!(amt > 0)) return "";
   return "Series discount of " + (pct > 0 ? (pct + "%") : ("$" + amt.toFixed(2)));
 }
+// "Soirée discount of 10%" / "Soirée discount of $2.00" for a single book (empty if none).
+function bookDiscountLabel(book){
+  const i = priceDisplayInfo(book);
+  if(i.strike === null) return "";
+  const amt = i.strike - i.price;
+  if(!(amt > 0)) return "";
+  const d = book.soireeDiscount;
+  const pct = (d && d.type === "percent") ? parseFloat(d.value) : null;
+  return "Soir\u00e9e discount of " + (pct > 0 ? (pct + "%") : ("$" + amt.toFixed(2)));
+}
 function seriesPriceHtml(book){
   const i = seriesSetInfo(book);
   if(!i) return "";
@@ -888,15 +898,8 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb-toggle">${isExpanded ? "see less…" : "show more…"}</div>` : ""}
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
+          ${bookDiscountLabel(book) ? `<div style="font-size:12px;font-weight:600;margin:-2px 0 6px;color:var(--terracotta,#E4593F);">${escapeHtml(bookDiscountLabel(book))}</div>` : ""}
           <div class="book-card-actions">
-            ${(book.isSeries && seriesSetInfo(book)) ? `<div style="font-size:13px;margin-bottom:6px;line-height:1.3;">Whole series: ${seriesPriceHtml(book)}</div>` : ""}
-            ${book.isSeries ? (seriesSetsInCart > 0 ? `
-              <div class="book-cart-stepper book-series-set-stepper" title="Whole series, as a set">
-                <button type="button" class="book-series-set-minus" title="Remove a set">${seriesSetsInCart === 1 ? "&#128465;" : "&minus;"}</button>
-                <span class="book-cart-count" style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;">${seriesSetsInCart} set${seriesSetsInCart === 1 ? "" : "s"} of this series ${seriesSetsInCart === 1 ? "is" : "are"} in your cart</span>
-                <button type="button" class="book-series-set-plus">+</button>
-              </div>
-            ` : `<button type="button" class="book-add-btn book-series-add-btn">Add entire series to cart</button>`) : ""}
             ${inCartCount > 0 ? `
               <div class="book-cart-stepper"${book.isSeries ? ' style="margin-top:8px;"' : ""}>
                 <button type="button" class="book-cart-minus" title="Remove">${inCartCount === 1 ? "&#128465;" : "&minus;"}</button>
@@ -906,6 +909,14 @@ function renderBrowse(app){
             ` : (book.isSeries
                 ? `<div><button type="button" class="book-single-btn book-single-add">Add to cart</button></div>`
                 : `<button type="button" class="book-add-btn">Add to cart</button>`)}
+            ${(book.isSeries && seriesSetInfo(book)) ? `<div style="font-size:13px;margin:10px 0 6px;line-height:1.3;">Whole series: ${seriesPriceHtml(book)}</div>` : ""}
+            ${book.isSeries ? (seriesSetsInCart > 0 ? `
+              <div class="book-cart-stepper book-series-set-stepper" title="Whole series, as a set">
+                <button type="button" class="book-series-set-minus" title="Remove a set">${seriesSetsInCart === 1 ? "&#128465;" : "&minus;"}</button>
+                <span class="book-cart-count" style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;">${seriesSetsInCart} set${seriesSetsInCart === 1 ? "" : "s"} of this series ${seriesSetsInCart === 1 ? "is" : "are"} in your cart</span>
+                <button type="button" class="book-series-set-plus">+</button>
+              </div>
+            ` : `<button type="button" class="book-add-btn book-series-add-btn">Add entire series to cart</button>`) : ""}
           </div>
         </div>
       `;
@@ -1243,7 +1254,7 @@ function startGroupSigningFlow(books){
   // Series-set pricing: if every book came from the same series and that
   // series has its own set price, prorate it across the books so the line
   // items sum to exactly the set price (last item absorbs rounding).
-  const allSameSeries = books.length > 1 && books.every(b => b.isSeries && b.seriesName === books[0].seriesName && b.author === books[0].author);
+  const allSameSeries = books.length > 0 && books.every(b => b.isSeries && b.seriesName === books[0].seriesName && b.author === books[0].author);
   let prices = books.map(b => effectivePrice(b));
   if(allSameSeries){
     const setPrice = seriesEffectivePrice(books[0]);
@@ -1275,15 +1286,15 @@ function startGroupSigningFlow(books){
   openModal(`
     <div class="eyebrow">${seriesLabel}</div>
     <div class="modal-title">${allSameSeries ? "The whole series" : "These " + books.length + " books"}</div>
-    <div class="modal-sub">${books.length} books \u2014 ${money(setTotal)} per ${allSameSeries ? "series" : "set"}</div>
+    <div class="modal-sub">${books.length} ${books.length === 1 ? "book" : "books"} \u2014 ${money(setTotal)} per ${allSameSeries ? "series" : "set"}</div>
     <div class="field">
-      <label>${allSameSeries ? "How many copies of the whole series?" : "How many copies of this group of books?"}</label>
+      <label>${allSameSeries ? "How many copies of this series do you want?" : "How many copies of this group of books?"}</label>
       <div class="qty-stepper">
         <button id="gqMinus">&minus;</button>
         <span class="qty-val" id="gqVal">1</span>
         <button id="gqPlus">+</button>
       </div>
-      <div class="help">Each copy includes all ${books.length} books.</div>
+      <div class="help">Each copy includes ${books.length === 1 ? "the 1 book" : "all " + books.length + " books"}${allSameSeries ? " in the series so far" : ""}.</div>
     </div>
     <button class="btn btn-primary btn-block" id="gqNextBtn">Next</button>
   `, (card)=>{
