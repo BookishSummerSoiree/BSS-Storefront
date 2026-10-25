@@ -1131,7 +1131,18 @@ function openFormatQuestion(book, onPicked){
   });
 }
 
+// Swag pack add-on: a book can offer one (flat price, set in Author Info).
+// The choice made on the quantity screen is held here until the copies are
+// added to the cart (addLinesToCart applies it to that book's new copies).
+let _swagNext = null;
+function bookSwagOffered(book){
+  return !!(book && book.swagPack && parseFloat(book.swagPrice) > 0);
+}
+function lineAmount(l){
+  return (parseFloat(l.unitPrice)||0) + (l.swag ? (parseFloat(l.swagPrice)||0) : 0);
+}
 function openSingleBookFlow(book){
+  _swagNext = null;
   openFormatQuestion(book, (format) => {
     let qty = 1;
     const unitInfo = bookFormatPriceInfo(book, format);
@@ -1148,12 +1159,24 @@ function openSingleBookFlow(book){
           <button id="qtyPlus">+</button>
         </div>
       </div>
+      ${bookSwagOffered(book) ? `
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:normal;">
+          <input type="checkbox" id="swagBox" style="width:auto;margin:0;">
+          <span><strong>Swag Pack</strong> <strong>(+${money(parseFloat(book.swagPrice))} each)</strong></span>
+        </label>
+        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmarks for this book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
+      </div>` : ""}
       <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
     `, (card)=>{
       const qtyVal = card.querySelector('#qtyVal');
       card.querySelector('#qtyMinus').onclick = () => { qty = Math.max(1, qty-1); qtyVal.textContent = qty; };
       card.querySelector('#qtyPlus').onclick = () => { qty = Math.min(20, qty+1); qtyVal.textContent = qty; };
-      card.querySelector('#qtyNextBtn').onclick = () => { closeModal(); openSignedQuestion(book, qty, format); };
+      card.querySelector('#qtyNextBtn').onclick = () => {
+        const sb = card.querySelector('#swagBox');
+        _swagNext = (sb && sb.checked) ? { bookId: book.id, price: parseFloat(book.swagPrice) } : null;
+        closeModal(); openSignedQuestion(book, qty, format);
+      };
     });
   });
 }
@@ -1257,7 +1280,9 @@ function openNameFields(book, count, onDone){
 /* ---- Group signing flow: used when several DIFFERENT books are added
    together (whole series, or a few picked from the series list). One
    shared signed/personalized decision and name for the whole group. ---- */
+let _groupSwag = false;
 function startGroupSigningFlow(books){
+  _groupSwag = false;
   // Series-set pricing: if every book came from the same series and that
   // series has its own set price, prorate it across the books so the line
   // items sum to exactly the set price (last item absorbs rounding).
@@ -1308,7 +1333,27 @@ function startGroupSigningFlow(books){
     const val = card.querySelector('#gqVal');
     card.querySelector('#gqMinus').onclick = () => { qty = Math.max(1, qty-1); val.textContent = qty; };
     card.querySelector('#gqPlus').onclick = () => { qty = Math.min(20, qty+1); val.textContent = qty; };
-    card.querySelector('#gqNextBtn').onclick = () => { closeModal(); groupSignedQuestion(books, prices, qty); };
+    card.querySelector('#gqNextBtn').onclick = () => {
+      closeModal();
+      _groupSwag = false;
+      const swagBooks = books.filter(bookSwagOffered);
+      if(!swagBooks.length){ groupSignedQuestion(books, prices, qty); return; }
+      const swagTotal = swagBooks.reduce((s,b) => s + parseFloat(b.swagPrice), 0);
+      const n = swagBooks.length;
+      openModal(`
+        <div class="eyebrow">${seriesLabel}</div>
+        <div class="modal-title">Swag Packs</div>
+        <div class="modal-sub">${n} of these books ${n === 1 ? "has a Swag Pack" : "have Swag Packs"}, for a total of ${money(swagTotal)} for ${allSameSeries ? "the whole series" : "all of these books"}${qty > 1 ? " (per set)" : ""}. Would you like to add ${n === 1 ? "it" : "that"}?</div>
+        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmarks for each book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
+        <div class="btn-row" style="flex-direction:column;align-items:stretch;">
+          <button class="btn btn-primary" id="gSwagYes">Yes, add the Swag Packs</button>
+          <button class="btn btn-secondary" id="gSwagNo" style="margin-top:10px;">No thanks</button>
+        </div>
+      `, (cs)=>{
+        cs.querySelector('#gSwagYes').onclick = () => { _groupSwag = true; closeModal(); groupSignedQuestion(books, prices, qty); };
+        cs.querySelector('#gSwagNo').onclick = () => { _groupSwag = false; closeModal(); groupSignedQuestion(books, prices, qty); };
+      });
+    };
   });
 }
 
@@ -1321,8 +1366,13 @@ function addGroupSets(books, prices, qty, signedNames){
     const groupId = 'sg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8) + n;
     const signed = n < signedNames.length;
     const name = signed ? (signedNames[n] || "") : "";
-    books.forEach((b,i) => lines.push(makeCartLine(b, signed, name, prices[i], groupId)));
+    books.forEach((b,i) => {
+      const ln = makeCartLine(b, signed, name, prices[i], groupId);
+      if(_groupSwag && bookSwagOffered(b)){ ln.swag = true; ln.swagPrice = parseFloat(b.swagPrice); }
+      lines.push(ln);
+    });
   }
+  _groupSwag = false;
   addLinesToCart(lines);
 }
 
@@ -1432,6 +1482,10 @@ function makeUnsignedLines(book, count, format){
 }
 
 function addLinesToCart(lines){
+  if(_swagNext){
+    lines.forEach(l => { if(l.bookId === _swagNext.bookId && !l.seriesGroupId){ l.swag = true; l.swagPrice = _swagNext.price; } });
+  }
+  _swagNext = null;
   cart = cart.concat(lines);
   saveCartToStorage();
   updateCartBadge();
@@ -1452,7 +1506,7 @@ function removeCartLine(cartLineId){
 }
 
 function cartTotal(){
-  return cart.reduce((sum,l) => sum + (parseFloat(l.unitPrice)||0), 0);
+  return cart.reduce((sum,l) => sum + lineAmount(l), 0);
 }
 
 /* ---- Cart grouping ----
@@ -1511,7 +1565,7 @@ function variantsForLines(lines){
     // Format is part of the variant key too, so a paperback copy and a
     // hardcover copy of the same book show as their own sub-lines instead
     // of being merged into one count.
-    const key = (line.format || "") + "|" + (line.signed ? "1" : "0") + "|" + (line.personalizedName || "");
+    const key = (line.format || "") + "|" + (line.signed ? "1" : "0") + "|" + (line.personalizedName || "") + "|" + (line.swag ? "s" : "");
     if(!map.has(key)){ map.set(key, []); order.push(key); }
     map.get(key).push(line);
   });
@@ -1519,9 +1573,10 @@ function variantsForLines(lines){
 }
 function variantDescriptionPlain(line){
   const prefix = line.formatLabel ? `${line.formatLabel} — ` : "";
-  if(line.signed && line.personalizedName) return `${prefix}Signed — personalized to "${line.personalizedName}"`;
-  if(line.signed) return `${prefix}Signed`;
-  return `${prefix}Not signed`;
+  const swagTxt = line.swag ? " + Swag pack" : "";
+  if(line.signed && line.personalizedName) return `${prefix}Signed — personalized to "${line.personalizedName}"${swagTxt}`;
+  if(line.signed) return `${prefix}Signed${swagTxt}`;
+  return `${prefix}Not signed${swagTxt}`;
 }
 
 // "+" on a book's cart row adds exactly one new copy, and a new copy is a
@@ -1540,6 +1595,10 @@ function incrementBookInCart(bookId, format){
     // the existing cart line already knows, so the flow still has a
     // title/author/cover/price to show.
     book = { id: bookId, author: existing.author, title: existing.title, coverUrl: existing.coverUrl, regularPrice: existing.unitPrice, soireePrice: "" };
+  }
+  {
+    const prev = cart.filter(l => l.bookId === bookId && (!format || l.format === format) && !l.seriesGroupId).pop();
+    _swagNext = (prev && prev.swag) ? { bookId: bookId, price: parseFloat(prev.swagPrice) } : null;
   }
   if(format){
     openSignedQuestion(book, 1, format);
@@ -1696,7 +1755,7 @@ function renderCart(app){
   groupCartByBook().forEach(group=>{
     const lines = group.lines;
     const first = lines[0];
-    const lineTotal = lines.reduce((sum,l) => sum + (parseFloat(l.unitPrice)||0), 0);
+    const lineTotal = lines.reduce((sum,l) => sum + lineAmount(l), 0);
 
     const row = document.createElement('div');
     row.className = "cart-line";
@@ -1715,7 +1774,8 @@ function renderCart(app){
           <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
           <div class="cart-line-variants">
             <div class="cart-line-meta">${lines.length} book${lines.length===1?"":"s"}: ${escapeHtml(bookTitles)}</div>
-            <div class="cart-line-meta">${escapeHtml(variantDescriptionPlain(first))}</div>
+            <div class="cart-line-meta">${escapeHtml(variantDescriptionPlain(Object.assign({}, first, {swag:false})))}</div>
+            ${lines.some(l => l.swag) ? `<div class="cart-line-meta">+ Swag packs for ${lines.filter(l => l.swag).length} of these books (${money(lines.reduce((s,l) => s + (l.swag ? (parseFloat(l.swagPrice)||0) : 0), 0))})</div>` : ""}
           </div>
         </div>
         <div class="cart-line-right">
@@ -1741,10 +1801,11 @@ function renderCart(app){
     // the format itself (when the book has more than one) is named once,
     // right under the title, instead of repeated on every variant line.
     const variantGroups = variantsForLines(lines);
+    const allSwag = lines.every(l => l.swag);
     row.innerHTML = `
       <div class="cart-line-cover">${first.coverUrl ? `<img src="${coverSrc(first.coverUrl)}" alt="">` : ""}</div>
       <div class="cart-line-info">
-        <div class="cart-line-title">${escapeHtml(first.title)}</div>
+        <div class="cart-line-title">${escapeHtml(first.title)}${allSwag ? " + Swag pack" : ""}</div>
         ${first.formatLabel ? `<div class="cart-line-meta" style="font-weight:700;color:var(--navy);">${escapeHtml(first.formatLabel)}</div>` : ""}
         <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
         <div class="cart-line-variants"></div>
@@ -1764,7 +1825,7 @@ function renderCart(app){
       const countPrefix = vLines.length > 1 ? `${vLines.length}× ` : "";
       const d = document.createElement('div');
       d.className = "cart-line-meta";
-      d.textContent = countPrefix + (vLines[0].signed && vLines[0].personalizedName ? `Signed — personalized to "${vLines[0].personalizedName}"` : (vLines[0].signed ? "Signed" : "Not signed"));
+      d.textContent = countPrefix + (vLines[0].signed && vLines[0].personalizedName ? `Signed — personalized to "${vLines[0].personalizedName}"` : (vLines[0].signed ? "Signed" : "Not signed")) + ((vLines[0].swag && !allSwag) ? " + Swag pack" : "");
       variantsWrap.appendChild(d);
     });
 
@@ -1863,8 +1924,16 @@ async function submitCheckout(btn){
         action: "createCheckoutSession",
         buyerName: name,
         buyerEmail: email,
-        lines: cart.map(l => ({ author: l.author, title: l.title, unitPrice: l.unitPrice, signed: l.signed, personalizedName: l.personalizedName,
-          seriesGroupId: (l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)) ? l.seriesGroupId : "", seriesName: l.seriesName || "" }))
+        lines: cart.reduce((out, l) => {
+          out.push({ author: l.author, title: l.title, unitPrice: l.unitPrice, signed: l.signed, personalizedName: l.personalizedName,
+            seriesGroupId: (l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)) ? l.seriesGroupId : "", seriesName: l.seriesName || "" });
+          // A Swag pack is its own priced line (same author, so it is paid out with their books).
+          if(l.swag && parseFloat(l.swagPrice) > 0){
+            out.push({ author: l.author, title: l.title + " \u2014 Swag pack", unitPrice: l.swagPrice, signed: false, personalizedName: "",
+              seriesGroupId: "", seriesName: "" });
+          }
+          return out;
+        }, [])
       })
     });
     const json = await res.json();
