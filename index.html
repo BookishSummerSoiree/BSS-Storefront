@@ -125,6 +125,14 @@
     margin-top:8px;
   }
   .book-single-btn:active{ transform:scale(0.98); }
+  /* "Add entire series" is a quiet secondary action, not the main button */
+  .book-series-add-btn{
+    font-size:11.5px; font-weight:600; padding:7px 14px; color:var(--navy);
+    background:rgba(12,30,61,0.08); border:none;
+  }
+  .book-swag-note{ margin:2px 0 8px; font-size:13px; line-height:1.4; }
+  .book-swag-note label{ display:flex; align-items:center; gap:8px; margin-top:4px; font-weight:600; cursor:pointer; }
+  .book-swag-note input{ width:auto; margin:0; }
   .book-cart-stepper{
     display:inline-flex; align-items:center; border:1.5px solid rgba(12,30,61,0.15);
     border-radius:999px; overflow:hidden; background:var(--cream);
@@ -906,6 +914,7 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
           ${bookDiscountLabel(book) ? `<div style="font-size:12px;font-weight:600;margin:-2px 0 6px;color:var(--terracotta,#E4593F);">${escapeHtml(bookDiscountLabel(book))}</div>` : ""}
+          ${bookSwagOffered(book) ? `<div class="book-swag-note">This book has a Swag Pack available for ${money(parseFloat(book.swagPrice))}${inCartCount > 0 ? "" : `<label><input type="checkbox" class="book-swag-box"${swagPicks.has(book.id) ? " checked" : ""}> Add Swag Pack</label>`}</div>` : ""}
           <div class="book-card-actions">
             ${inCartCount > 0 ? `
               <div class="book-cart-stepper"${book.isSeries ? ' style="margin-top:8px;"' : ""}>
@@ -951,6 +960,11 @@ function renderBrowse(app){
       // for a series, where that's how you choose whole-series vs one book).
       // Standalone book: "Add to cart" runs the normal flow. Series book:
       // two clear buttons — add the whole series, or add just this book.
+      const swagBox = card.querySelector('.book-swag-box');
+      if(swagBox){
+        swagBox.onclick = (e) => e.stopPropagation();
+        swagBox.onchange = () => { if(swagBox.checked) swagPicks.add(book.id); else swagPicks.delete(book.id); };
+      }
       const addBtn = card.querySelector('.book-add-btn:not(.book-series-add-btn)');
       if(addBtn){
         addBtn.onclick = (e) => { e.stopPropagation(); openBookFlow(book); };
@@ -1135,6 +1149,7 @@ function openFormatQuestion(book, onPicked){
 // The choice made on the quantity screen is held here until the copies are
 // added to the cart (addLinesToCart applies it to that book's new copies).
 let _swagNext = null;
+const swagPicks = new Set(); // books whose "Add Swag Pack" box is ticked on the browse card
 function bookSwagOffered(book){
   return !!(book && book.swagPack && parseFloat(book.swagPrice) > 0);
 }
@@ -1149,8 +1164,8 @@ function openSingleBookFlow(book){
     const formatPrefix = (bookFormats(book).length > 1 || format === "specialEdition") ? `${escapeHtml(formatLabel(format, book))} — ` : "";
     openModal(`
       <div class="eyebrow">${escapeHtml(book.author)}</div>
-      <div class="modal-title">${escapeHtml(book.title)}</div>
-      <div class="modal-sub">${formatPrefix}${money(unitInfo.price)} each</div>
+      <div class="modal-title" id="sqTitle">${escapeHtml(book.title)}</div>
+      <div class="modal-sub" id="sqSub">${formatPrefix}${money(unitInfo.price)} each</div>
       <div class="field">
         <label>How many copies?</label>
         <div class="qty-stepper">
@@ -1162,7 +1177,7 @@ function openSingleBookFlow(book){
       ${bookSwagOffered(book) ? `
       <div class="field">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:normal;">
-          <input type="checkbox" id="swagBox" style="width:auto;margin:0;">
+          <input type="checkbox" id="swagBox" style="width:auto;margin:0;"${swagPicks.has(book.id) ? " checked" : ""}>
           <span><strong>Swag Pack</strong> <strong>(+${money(parseFloat(book.swagPrice))} each)</strong></span>
         </label>
         <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmarks for this book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
@@ -1170,6 +1185,18 @@ function openSingleBookFlow(book){
       <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
     `, (card)=>{
       const qtyVal = card.querySelector('#qtyVal');
+      // With the Swag Pack ticked, the heading becomes "Title + Swag pack" and the
+      // price underneath is the book plus the Swag Pack, per copy.
+      const swagBoxEl = card.querySelector('#swagBox');
+      function refreshSwagHeading(){
+        const on = !!(swagBoxEl && swagBoxEl.checked);
+        const sw = on ? parseFloat(book.swagPrice) : 0;
+        card.querySelector('#sqTitle').textContent = book.title + (on ? " + Swag pack" : "");
+        card.querySelector('#sqSub').innerHTML = on
+          ? `${formatPrefix}<strong>${money(unitInfo.price + sw)}</strong> each <span style="opacity:.7;">(${money(unitInfo.price)} book + ${money(sw)} Swag pack)</span>`
+          : `${formatPrefix}${money(unitInfo.price)} each`;
+      }
+      if(swagBoxEl){ swagBoxEl.onchange = refreshSwagHeading; refreshSwagHeading(); }
       card.querySelector('#qtyMinus').onclick = () => { qty = Math.max(1, qty-1); qtyVal.textContent = qty; };
       card.querySelector('#qtyPlus').onclick = () => { qty = Math.min(20, qty+1); qtyVal.textContent = qty; };
       card.querySelector('#qtyNextBtn').onclick = () => {
@@ -1485,6 +1512,7 @@ function addLinesToCart(lines){
   if(_swagNext){
     lines.forEach(l => { if(l.bookId === _swagNext.bookId && !l.seriesGroupId){ l.swag = true; l.swagPrice = _swagNext.price; } });
   }
+  if(lines.length) swagPicks.delete(lines[0].bookId);
   _swagNext = null;
   cart = cart.concat(lines);
   saveCartToStorage();
