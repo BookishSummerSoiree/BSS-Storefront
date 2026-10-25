@@ -914,7 +914,11 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
           ${bookDiscountLabel(book) ? `<div style="font-size:12px;font-weight:600;margin:-2px 0 6px;color:var(--terracotta,#E4593F);">${escapeHtml(bookDiscountLabel(book))}</div>` : ""}
-          ${bookSwagOffered(book) ? `<div class="book-swag-note">${(inCartCount > 0 && cart.some(l => l.bookId === book.id && l.swag)) ? "<strong>Swag pack in cart</strong>" : "This book has a Swag Pack available for " + money(parseFloat(book.swagPrice))}${inCartCount > 0 ? "" : `<label><input type="checkbox" class="book-swag-box"${swagPicks.has(book.id) ? " checked" : ""}> Add Swag Pack</label>`}</div>` : ""}
+          ${bookSwagOffered(book) ? (() => {
+            const bl = cart.filter(l => l.bookId === book.id && !l.seriesGroupId);
+            const allHave = bl.length > 0 && bl.every(l => l.swag);
+            return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : "This book has a Swag Pack available for " + money(parseFloat(book.swagPrice)) + `<label><input type="checkbox" class="book-swag-box"${(bl.length === 0 && swagPicks.has(book.id)) ? " checked" : ""}> Add Swag Pack</label>`}</div>`;
+          })() : ""}
           <div class="book-card-actions">
             ${inCartCount > 0 ? `
               <div class="book-cart-stepper"${book.isSeries ? ' style="margin-top:8px;"' : ""}>
@@ -963,7 +967,15 @@ function renderBrowse(app){
       const swagBox = card.querySelector('.book-swag-box');
       if(swagBox){
         swagBox.onclick = (e) => e.stopPropagation();
-        swagBox.onchange = () => { if(swagBox.checked) swagPicks.add(book.id); else swagPicks.delete(book.id); };
+        swagBox.onchange = () => {
+          // Book already in the cart (without a Swag pack): adding the pack happens right away, in its own step.
+          if(swagBox.checked && cart.some(l => l.bookId === book.id && !l.seriesGroupId)){
+            swagBox.checked = false;
+            openAddSwagToCartModal(book);
+            return;
+          }
+          if(swagBox.checked) swagPicks.add(book.id); else swagPicks.delete(book.id);
+        };
       }
       const addBtn = card.querySelector('.book-add-btn:not(.book-series-add-btn)');
       if(addBtn){
@@ -1156,6 +1168,42 @@ function bookSwagOffered(book){
 function lineAmount(l){
   return (parseFloat(l.unitPrice)||0) + (l.swag ? (parseFloat(l.swagPrice)||0) : 0);
 }
+function openAddSwagToCartModal(book){
+  const lacking = cart.filter(l => l.bookId === book.id && !l.seriesGroupId && !l.swag);
+  if(!lacking.length) return;
+  let n = lacking.length;
+  const price = parseFloat(book.swagPrice);
+  openModal(`
+    <div class="eyebrow">${escapeHtml(book.author)}</div>
+    <div class="modal-title">Adding the ${escapeHtml(book.title)} Swag pack</div>
+    <div class="modal-sub"><strong>${money(price)}</strong>${lacking.length > 1 ? " each" : ""}</div>
+    <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmark for this book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
+    ${lacking.length > 1 ? `
+    <div class="field">
+      <label>How many Swag packs? (you have ${lacking.length} copies in your cart)</label>
+      <div class="qty-stepper">
+        <button id="asMinus">&minus;</button>
+        <span class="qty-val" id="asVal">${n}</span>
+        <button id="asPlus">+</button>
+      </div>
+    </div>` : ""}
+    <button class="btn btn-primary btn-block" id="asNextBtn">Next</button>
+  `, (card)=>{
+    const val = card.querySelector('#asVal');
+    if(val){
+      card.querySelector('#asMinus').onclick = () => { n = Math.max(1, n-1); val.textContent = n; };
+      card.querySelector('#asPlus').onclick = () => { n = Math.min(lacking.length, n+1); val.textContent = n; };
+    }
+    card.querySelector('#asNextBtn').onclick = () => {
+      lacking.slice(0, n).forEach(l => { l.swag = true; l.swagPrice = price; });
+      saveCartToStorage();
+      updateCartBadge();
+      closeModal();
+      showToast("Swag pack added to cart");
+      const y = window.scrollY; render(); window.scrollTo(0, y);
+    };
+  });
+}
 function openSingleBookFlow(book){
   _swagNext = null;
   openFormatQuestion(book, (format) => {
@@ -1180,7 +1228,7 @@ function openSingleBookFlow(book){
           <input type="checkbox" id="swagBox" style="width:auto;margin:0;"${swagPicks.has(book.id) ? " checked" : ""}>
           <span><strong>Swag Pack</strong> <strong>(+${money(parseFloat(book.swagPrice))} each)</strong></span>
         </label>
-        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmarks for this book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
+        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmark for this book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
       </div>` : ""}
       <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
     `, (card)=>{
@@ -1371,7 +1419,7 @@ function startGroupSigningFlow(books){
         <div class="eyebrow">${seriesLabel}</div>
         <div class="modal-title">Swag Packs</div>
         <div class="modal-sub">${n} of these books ${n === 1 ? "has a Swag Pack" : "have Swag Packs"}, for a total of ${money(swagTotal)} for ${allSameSeries ? "the whole series" : "all of these books"}${qty > 1 ? " (per set)" : ""}. Would you like to add ${n === 1 ? "it" : "that"}?</div>
-        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmarks for each book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
+        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmark for each book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
         <div class="btn-row" style="flex-direction:column;align-items:stretch;">
           <button class="btn btn-primary" id="gSwagYes">Yes, add the Swag Packs</button>
           <button class="btn btn-secondary" id="gSwagNo" style="margin-top:10px;">No thanks</button>
