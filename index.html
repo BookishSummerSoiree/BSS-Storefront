@@ -914,7 +914,7 @@ function renderBrowse(app){
           ${hasBlurb ? `<div class="book-blurb" style="display:${isExpanded ? "block" : "none"};">${renderFormattedBlurb(book.blurb)}</div>` : ""}
           <div class="book-price">${priceHtml}</div>
           ${bookDiscountLabel(book) ? `<div style="font-size:12px;font-weight:600;margin:-2px 0 6px;color:var(--terracotta,#E4593F);">${escapeHtml(bookDiscountLabel(book))}</div>` : ""}
-          ${bookSwagOffered(book) ? `<div class="book-swag-note">This book has a Swag Pack available for ${money(parseFloat(book.swagPrice))}${inCartCount > 0 ? "" : `<label><input type="checkbox" class="book-swag-box"${swagPicks.has(book.id) ? " checked" : ""}> Add Swag Pack</label>`}</div>` : ""}
+          ${bookSwagOffered(book) ? `<div class="book-swag-note">${(inCartCount > 0 && cart.some(l => l.bookId === book.id && l.swag)) ? "<strong>Swag pack in cart</strong>" : "This book has a Swag Pack available for " + money(parseFloat(book.swagPrice))}${inCartCount > 0 ? "" : `<label><input type="checkbox" class="book-swag-box"${swagPicks.has(book.id) ? " checked" : ""}> Add Swag Pack</label>`}</div>` : ""}
           <div class="book-card-actions">
             ${inCartCount > 0 ? `
               <div class="book-cart-stepper"${book.isSeries ? ' style="margin-top:8px;"' : ""}>
