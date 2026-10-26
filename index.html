@@ -133,6 +133,7 @@
   .book-swag-note{ margin:2px 0 8px; font-size:13px; line-height:1.4; }
   .book-swag-note label{ display:flex; align-items:center; gap:8px; margin-top:4px; font-weight:600; cursor:pointer; }
   .book-swag-note input{ width:auto; margin:0; }
+  .book-swag-note .swag-note-text{ margin:2px 0 0 22px; font-size:12px; font-style:italic; line-height:1.4; opacity:.85; }
   .book-cart-stepper{
     display:inline-flex; align-items:center; border:1.5px solid rgba(12,30,61,0.15);
     border-radius:999px; overflow:hidden; background:var(--cream);
@@ -222,6 +223,10 @@
     display:flex; align-items:center; gap:12px; padding:10px 4px;
     border-bottom:1px solid rgba(12,30,61,0.08); font-family:'Lora',serif; font-size:14.5px;
   }
+  .series-list-item.sl-plain{ border-bottom:none; }
+  .sl-group{ border-bottom:1px solid rgba(12,30,61,0.10); }
+  .sl-group:last-child{ border-bottom:none; }
+  .sl-head{ border-bottom:2px solid rgba(12,30,61,0.22); margin-bottom:4px; padding-bottom:6px; }
   .series-list-item img{ width:36px; height:52px; object-fit:cover; border-radius:4px; background:var(--cream); }
   .series-list-item input{ width:18px; height:18px; accent-color:var(--terracotta); flex-shrink:0; }
 
@@ -917,7 +922,7 @@ function renderBrowse(app){
           ${bookSwagOffered(book) ? (() => {
             const bl = cart.filter(l => l.bookId === book.id && !l.seriesGroupId);
             const allHave = cart.some(l => l.bookId === book.id + "::swag") || (bl.length > 0 && bl.every(l => l.swag));
-            return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : "This book has a Swag Pack available for " + money(parseFloat(book.swagPrice)) + `<label><input type="checkbox" class="book-swag-box"${(bl.length === 0 && swagPicks.has(book.id)) ? " checked" : ""}> Add Swag Pack</label>`}</div>`;
+            return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : `<label><input type="checkbox" class="book-swag-box"${(bl.length === 0 && swagPicks.has(book.id)) ? " checked" : ""}> <span>Swag pack <strong>${money(parseFloat(book.swagPrice))}</strong></span></label><div class="swag-note-text">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</div>`}</div>`;
           })() : ""}
           <div class="book-card-actions">
             ${inCartCount > 0 ? `
@@ -1092,35 +1097,36 @@ function openSeriesListModal(book, siblings, pre){
   const wholePrice = setPrice !== null ? setPrice : sumPrice;
   const swagBooks = siblings.filter(bookSwagOffered);
   const allSwagTotal = swagBooks.reduce((t,b) => t + parseFloat(b.swagPrice), 0);
-  const sub = "margin-left:28px;font-size:13px;";
+  const sub = "margin-left:34px;font-size:13px;";
+  const priceOf = b => { const pi = priceDisplayInfo(b); return (pi.strike !== null ? `<span class="strike">${money(pi.strike)}</span>` : "") + `<strong>${money(pi.price)}</strong>`; };
   const itemsHtml = siblings.map((b,i)=>`
-    <label class="series-list-item">
+    <div class="sl-group">
+    <label class="series-list-item sl-plain">
       <input type="checkbox" class="sl-book" data-idx="${i}"${(!pre || b.id === pre.id) ? " checked" : ""}>
       ${b.coverUrl ? `<img src="${coverSrc(b.coverUrl)}" alt="">` : `<div style="width:36px;height:52px;background:var(--cream);border-radius:4px;flex-shrink:0;"></div>`}
       <span style="flex:1;">${escapeHtml(b.title)}${b.seriesBookNumber ? ` <span style="opacity:.6;font-size:12px;">(Book ${escapeHtml(b.seriesBookNumber)})</span>` : ""}</span>
-      <span style="font-weight:700;font-size:13px;">${money(effectivePrice(b))}</span>
+      <span style="font-size:13px;white-space:nowrap;">${priceOf(b)}</span>
     </label>
-    ${bookSwagOffered(b) ? `<label class="series-list-item" style="${sub}padding-top:0;">
+    ${bookSwagOffered(b) ? `<label class="series-list-item sl-plain" style="${sub}padding-top:0;">
       <input type="checkbox" class="sl-swag" data-idx="${i}"${swagPicks.has(b.id) ? " checked" : ""}>
-      <span style="flex:1;">Swag pack</span>
-      <span style="font-weight:700;">+${money(parseFloat(b.swagPrice))}</span>
+      <span>Swag pack <strong>${money(parseFloat(b.swagPrice))}</strong></span>
     </label>` : ""}
+    </div>
   `).join("");
 
   openModal(`
     <div class="eyebrow">${escapeHtml(book.seriesName)}</div>
     <div class="modal-title">Books in this series</div>
-    <div style="margin-bottom:12px;">
-      <label class="series-list-item" style="font-weight:700;">
+    <div class="sl-head">
+      <label class="series-list-item sl-plain" style="font-weight:700;padding-bottom:2px;">
         <input type="checkbox" id="slAll">
         <span style="flex:1;">Entire series</span>
-        <span>${money(wholePrice)}</span>
+        <span style="white-space:nowrap;">${seriesSetInfo(book) && seriesSetInfo(book).strike !== null ? `<span class="strike">${money(seriesSetInfo(book).strike)}</span>` : ""}<strong>${money(wholePrice)}</strong></span>
       </label>
-      ${seriesDiscountLabel(book) ? `<div style="margin:-4px 0 6px 28px;font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
-      ${swagBooks.length ? `<label class="series-list-item" style="${sub}padding-top:0;">
+      ${seriesDiscountLabel(book) ? `<div style="margin:0 0 4px 34px;font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
+      ${swagBooks.length ? `<label class="series-list-item sl-plain" style="${sub}padding-top:4px;padding-bottom:4px;">
         <input type="checkbox" id="slAllSwag">
-        <span style="flex:1;">All available swag packs</span>
-        <span>(${money(allSwagTotal)})</span>
+        <span>All available swag packs <strong>${money(allSwagTotal)}</strong></span>
       </label>` : ""}
     </div>
     <div style="margin-bottom:14px;">${itemsHtml}</div>
@@ -1258,7 +1264,7 @@ function openAddSwagToCartModal(book){
     <div class="eyebrow">${escapeHtml(book.author)}</div>
     <div class="modal-title">Adding the ${escapeHtml(book.title)} Swag pack</div>
     <div class="modal-sub"><strong>${money(price)}</strong>${lacking.length > 1 ? " each" : ""}</div>
-    <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. It might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
+    <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</div>
     ${lacking.length > 1 ? `
     <div class="field">
       <label>How many Swag packs? (you have ${lacking.length} copies in your cart)</label>
@@ -1315,7 +1321,7 @@ function openSingleBookFlow(book){
           <input type="checkbox" id="swagBox" style="width:auto;margin:0;"${swagPicks.has(book.id) ? " checked" : ""}>
           <span><strong>Swag Pack</strong> <strong>(+${money(parseFloat(book.swagPrice))} each)</strong></span>
         </label>
-        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. It might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
+        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</div>
       </div>` : ""}
       <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
     `, (card)=>{
@@ -1530,7 +1536,7 @@ function startGroupSigningFlow(books, presetSwag){
         <div class="modal-title">Swag Packs</div>
         <div class="modal-sub">${n === 1 ? "1 of the " + books.length + " books" : n + " of the " + books.length + " books"} in ${allSameSeries ? "this series" : "this group"} ${n === 1 ? "has a Swag Pack" : "have Swag Packs"} available. Check the ones you\u2019d like to add.</div>
         <div style="margin:0 0 12px;">${rows}</div>
-        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. It might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
+        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</div>
         <div id="gSwagTotal" style="margin:0 0 14px;font-size:14px;font-weight:600;"></div>
         <button class="btn btn-primary btn-block" id="gSwagGo">Continue</button>
       `, (cs)=>{
