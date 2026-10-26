@@ -131,9 +131,15 @@
     background:rgba(12,30,61,0.08); border:none;
   }
   .book-swag-note{ margin:2px 0 8px; font-size:13px; line-height:1.4; }
+  .book-btn-row{ display:flex; flex-wrap:wrap; gap:6px; }
+  .book-pick-btn{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:11.5px; letter-spacing:.01em; color:var(--navy); background:#fff; border:1.5px solid var(--navy); border-radius:999px; padding:8px 12px; cursor:pointer; }
+  .book-pick-btn.book-pick-book{ background:var(--navy); color:#fff; }
+  .lbl-short{ display:none; }
+  @media (max-width: 520px){ .lbl-long{ display:none; } .lbl-short{ display:inline; } .book-pick-btn{ padding:8px 10px; font-size:11px; } .book-btn-row{ gap:5px; } }
+  .book-pick-btn:active{ transform:scale(0.98); }
   .book-swag-note label{ display:flex; align-items:center; gap:8px; margin-top:4px; font-weight:600; cursor:pointer; }
   .book-swag-note input{ width:auto; margin:0; }
-  .book-swag-note .swag-note-text{ margin:2px 0 0 22px; font-size:12px; font-style:italic; line-height:1.4; opacity:.85; }
+  .book-swag-note .swag-note-text{ font-size:12px; line-height:1.4; opacity:.85; }
   .book-cart-stepper{
     display:inline-flex; align-items:center; border:1.5px solid rgba(12,30,61,0.15);
     border-radius:999px; overflow:hidden; background:var(--cream);
@@ -922,7 +928,7 @@ function renderBrowse(app){
           ${bookSwagOffered(book) ? (() => {
             const bl = cart.filter(l => l.bookId === book.id && !l.seriesGroupId);
             const allHave = cart.some(l => l.bookId === book.id + "::swag") || (bl.length > 0 && bl.every(l => l.swag));
-            return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : `<label><input type="checkbox" class="book-swag-box"${(bl.length === 0 && swagPicks.has(book.id)) ? " checked" : ""}> <span>Swag pack <strong>${money(parseFloat(book.swagPrice))}</strong></span></label><div class="swag-note-text">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</div>`}</div>`;
+            return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : `<strong>Swag pack available.</strong> ${money(parseFloat(book.swagPrice))} <em class="swag-note-text">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</em>${inCartCount > 0 ? `<div><button type="button" class="book-pick-btn book-pick-addswag" style="margin-top:6px;">Add swag pack to cart</button></div>` : ""}`}</div>`;
           })() : ""}
           <div class="book-card-actions">
             ${inCartCount > 0 ? `
@@ -931,9 +937,7 @@ function renderBrowse(app){
                 <span class="book-cart-count"${seriesSetsInCart > 0 ? ' style="font-size:12px;line-height:1.25;text-align:center;white-space:normal;"' : ""}>${seriesSetsInCart > 0 ? `${inCartCount} single book${inCartCount === 1 ? "" : "s"} in cart` : `${inCartCount} in cart`}</span>
                 <button type="button" class="book-cart-plus">+</button>
               </div>
-            ` : (book.isSeries
-                ? `<div><button type="button" class="book-single-btn book-single-add">Add to cart</button></div>`
-                : `<button type="button" class="book-add-btn">Add to cart</button>`)}
+            ` : bookAddButtonsHtml(book)}
             ${(book.isSeries && seriesSetInfo(book)) ? `<div style="font-size:13px;margin:10px 0 6px;line-height:1.3;">Whole series: ${seriesPriceHtml(book)}</div>` : ""}
             ${book.isSeries ? (seriesSetsInCart > 0 ? `
               <div class="book-cart-stepper book-series-set-stepper" title="Whole series, as a set">
@@ -993,6 +997,13 @@ function renderBrowse(app){
           openSeriesListModal(book, seriesSiblings(book));
         };
       }
+      const pickBook = card.querySelector('.book-pick-book'), pickBoth = card.querySelector('.book-pick-both'), pickSwag = card.querySelector('.book-pick-swag'), pickAddSwag = card.querySelector('.book-pick-addswag');
+      if(pickBook) pickBook.onclick = (e) => { e.stopPropagation(); swagPicks.delete(book.id); openBookFlow(book); };
+      if(pickBoth) pickBoth.onclick = (e) => { e.stopPropagation(); swagPicks.add(book.id); openBookFlow(book); };
+      if(pickSwag) pickSwag.onclick = (e) => { e.stopPropagation();
+        confirmSwagOnly([book], () => { addLinesToCart([makeSwagOnlyLine(book)]); }, () => { swagPicks.add(book.id); openBookFlow(book); });
+      };
+      if(pickAddSwag) pickAddSwag.onclick = (e) => { e.stopPropagation(); openAddSwagToCartModal(book); };
       const singleBtn = card.querySelector('.book-single-btn');
       if(singleBtn){
         singleBtn.onclick = (e) => { e.stopPropagation(); openBookFlow(book); };
@@ -2080,6 +2091,16 @@ function renderCart(app){
 /* =========================================================
    CHECKOUT
 ========================================================= */
+function bookAddButtonsHtml(book){
+  const bl = cart.filter(l => l.bookId === book.id && !l.seriesGroupId);
+  const swagInCart = cart.some(l => l.bookId === book.id + "::swag") || (bl.length > 0 && bl.every(l => l.swag));
+  if(bookSwagOffered(book) && !swagInCart){
+    return `<div class="book-btn-row"><button type="button" class="book-pick-btn book-pick-book"><span class="lbl-long">Add book to cart</span><span class="lbl-short">Add book</span></button><button type="button" class="book-pick-btn book-pick-both"><span class="lbl-long">Add book + Swag pack to cart</span><span class="lbl-short">Add book + swag</span></button><button type="button" class="book-pick-btn book-pick-swag"><span class="lbl-long">Swag pack only</span><span class="lbl-short">Swag only</span></button></div>`;
+  }
+  return book.isSeries
+    ? `<div><button type="button" class="book-single-btn book-single-add">Add to cart</button></div>`
+    : `<button type="button" class="book-add-btn">Add to cart</button>`;
+}
 function seriesSwagSuffix(lines, first){
   const n = lines.filter(l => l.swag).length;
   if(!n) return "";
