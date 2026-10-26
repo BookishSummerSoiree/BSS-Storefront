@@ -2052,7 +2052,11 @@ function renderCart(app){
   const totalRow = document.createElement('div');
   totalRow.className = "cart-total-row";
   totalRow.innerHTML = `<span>Total</span><span>${money(cartTotal())}</span>`;
+  const finalNote = document.createElement('div');
+  finalNote.style.cssText = "font-size:12px;color:#6b7080;margin:6px 0 14px;text-align:right;";
+  finalNote.textContent = "All sales are final. No refunds.";
   app.appendChild(totalRow);
+  app.appendChild(finalNote);
 
   const bar = document.createElement('div');
   bar.style.marginTop = "20px";
@@ -2118,6 +2122,11 @@ function renderCheckout(app){
   `;
   app.appendChild(form);
 
+  const finalBox = document.createElement('label');
+  finalBox.style.cssText = "display:flex;align-items:flex-start;gap:10px;margin:4px 0 16px;font-size:13.5px;line-height:1.4;cursor:pointer;";
+  finalBox.innerHTML = `<input type="checkbox" id="salesFinal" style="width:18px;height:18px;margin-top:1px;accent-color:var(--terracotta);flex-shrink:0;"><span>I understand that all sales are final. No refunds.</span>`;
+  app.appendChild(finalBox);
+
   const payBtn = document.createElement('button');
   payBtn.className = "btn btn-primary btn-block";
   payBtn.textContent = `Pay ${money(cartTotal())}`;
@@ -2135,6 +2144,7 @@ async function submitCheckout(btn){
   const first = document.getElementById('buyerFirst').value.trim();
   const last = document.getElementById('buyerLast').value.trim();
   if(!first || !last){ showToast("Please enter your first and last name"); return; }
+  if(!document.getElementById('salesFinal').checked){ showToast("Please check the box to confirm all sales are final"); return; }
   const name = first + " " + last;
   const email = document.getElementById('buyerEmail').value.trim();
   if(!email || email.indexOf("@") === -1){ showToast("Please enter a valid email"); return; }
