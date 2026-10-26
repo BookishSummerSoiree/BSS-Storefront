@@ -1257,7 +1257,7 @@ function openAddSwagToCartModal(book){
     <div class="eyebrow">${escapeHtml(book.author)}</div>
     <div class="modal-title">Adding the ${escapeHtml(book.title)} Swag pack</div>
     <div class="modal-sub"><strong>${money(price)}</strong>${lacking.length > 1 ? " each" : ""}</div>
-    <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. Things they might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
+    <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. It might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
     ${lacking.length > 1 ? `
     <div class="field">
       <label>How many Swag packs? (you have ${lacking.length} copies in your cart)</label>
@@ -1314,7 +1314,7 @@ function openSingleBookFlow(book){
           <input type="checkbox" id="swagBox" style="width:auto;margin:0;"${swagPicks.has(book.id) ? " checked" : ""}>
           <span><strong>Swag Pack</strong> <strong>(+${money(parseFloat(book.swagPrice))} each)</strong></span>
         </label>
-        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. Things they might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
+        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. It might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
       </div>` : ""}
       <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
     `, (card)=>{
@@ -1529,7 +1529,7 @@ function startGroupSigningFlow(books, presetSwag){
         <div class="modal-title">Swag Packs</div>
         <div class="modal-sub">${n === 1 ? "1 of the " + books.length + " books" : n + " of the " + books.length + " books"} in ${allSameSeries ? "this series" : "this group"} ${n === 1 ? "has a Swag Pack" : "have Swag Packs"} available. Check the ones you\u2019d like to add.</div>
         <div style="margin:0 0 12px;">${rows}</div>
-        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. Things they might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
+        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. It might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
         <div id="gSwagTotal" style="margin:0 0 14px;font-size:14px;font-weight:600;"></div>
         <button class="btn btn-primary btn-block" id="gSwagGo">Continue</button>
       `, (cs)=>{
@@ -2129,12 +2129,16 @@ async function submitCheckout(btn){
         buyerName: name,
         buyerEmail: email,
         lines: cart.reduce((out, l) => {
-          if(!l.swagOnly) out.push({ author: l.author, title: l.title, unitPrice: l.unitPrice, signed: l.signed, personalizedName: l.personalizedName,
-            seriesGroupId: (l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)) ? l.seriesGroupId : "", seriesName: l.seriesName || "" });
-          // A Swag pack is its own priced line (same author, so it is paid out with their books).
-          if(l.swag && parseFloat(l.swagPrice) > 0){
+          const sp = (l.swag && parseFloat(l.swagPrice) > 0) ? parseFloat(l.swagPrice) : 0;
+          if(l.swagOnly){
+            // Swag pack by itself: its own line.
             out.push({ author: l.author, title: l.title + " \u2014 Swag pack", unitPrice: l.swagPrice, signed: false, personalizedName: "",
               seriesGroupId: "", seriesName: "" });
+          } else {
+            // Swag bought with a book rides on that book's line: "Book + Swag pack".
+            out.push({ author: l.author, title: l.title + (sp ? " + Swag pack" : ""), unitPrice: Math.round((parseFloat(l.unitPrice) + sp) * 100) / 100,
+              signed: l.signed, personalizedName: l.personalizedName,
+              seriesGroupId: (l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)) ? l.seriesGroupId : "", seriesName: l.seriesName || "" });
           }
           return out;
         }, [])
