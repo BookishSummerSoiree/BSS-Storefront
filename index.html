@@ -229,7 +229,7 @@
     display:flex; align-items:center; gap:12px; padding:10px 4px;
     border-bottom:1px solid rgba(12,30,61,0.08); font-family:'Lora',serif; font-size:14.5px;
   }
-  .series-list-item.sl-plain{ border-bottom:none; }
+  .series-list-item.sl-plain{ border-bottom:none; padding:3px 2px; font-size:13px; gap:8px; }
   .sl-group{ border-bottom:1px solid rgba(12,30,61,0.10); }
   .sl-group:last-child{ border-bottom:none; }
   .sl-head{ border-bottom:2px solid rgba(12,30,61,0.22); margin-bottom:4px; padding-bottom:6px; }
@@ -1108,7 +1108,7 @@ function openSeriesListModal(book, siblings, pre){
   const wholePrice = setPrice !== null ? setPrice : sumPrice;
   const swagBooks = siblings.filter(bookSwagOffered);
   const allSwagTotal = swagBooks.reduce((t,b) => t + parseFloat(b.swagPrice), 0);
-  const sub = "margin-left:34px;font-size:13px;";
+  const sub = "margin-left:28px;font-size:12px;";
   const priceOf = b => { const pi = priceDisplayInfo(b); return (pi.strike !== null ? `<span class="strike">${money(pi.strike)}</span>` : "") + `<strong>${money(pi.price)}</strong>`; };
   const itemsHtml = siblings.map((b,i)=>`
     <div class="sl-group">
@@ -1117,7 +1117,7 @@ function openSeriesListModal(book, siblings, pre){
       <span style="flex:1;">${escapeHtml(b.title)}${b.seriesBookNumber ? ` <span style="opacity:.6;font-size:12px;">(Book ${escapeHtml(b.seriesBookNumber)})</span>` : ""}</span>
       <span style="font-size:13px;white-space:nowrap;">${priceOf(b)}</span>
     </label>
-    ${bookSwagOffered(b) ? `<label class="series-list-item sl-plain" style="${sub}padding-top:0;">
+    ${bookSwagOffered(b) ? `<label class="series-list-item sl-plain" style="${sub}padding-top:0;padding-bottom:5px;">
       <input type="checkbox" class="sl-swag" data-idx="${i}"${swagPicks.has(b.id) ? " checked" : ""}>
       <span>Swag pack <strong>${money(parseFloat(b.swagPrice))}</strong></span>
     </label>` : ""}
@@ -1131,13 +1131,13 @@ function openSeriesListModal(book, siblings, pre){
     <div class="radio-group" style="margin-bottom:12px;"><div class="radio-option" id="slJustThis"><span>I only want this book from the series</span></div></div>` : ""}
     <div style="background:var(--cream);border:1.5px solid rgba(12,30,61,0.12);border-radius:12px;padding:8px 12px;margin-bottom:14px;">
     <div class="sl-head">
-      <label class="series-list-item sl-plain" style="font-weight:700;padding-bottom:2px;">
+      <label class="series-list-item sl-plain" style="font-weight:700;">
         <input type="checkbox" id="slAll">
         <span style="flex:1;">Add the whole series to my cart</span>
         <span style="white-space:nowrap;">${seriesSetInfo(book) && seriesSetInfo(book).strike !== null ? `<span class="strike">${money(seriesSetInfo(book).strike)}</span>` : ""}<strong>${money(wholePrice)}</strong></span>
       </label>
       ${seriesDiscountLabel(book) ? `<div style="margin:-6px 4px 4px 0;text-align:right;font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
-      ${swagBooks.length ? `<label class="series-list-item sl-plain" style="${sub}padding-top:4px;padding-bottom:4px;">
+      ${swagBooks.length ? `<label class="series-list-item sl-plain" style="${sub}padding-top:0;padding-bottom:4px;">
         <input type="checkbox" id="slAllSwag">
         <span>All available swag packs <strong>${money(allSwagTotal)}</strong></span>
       </label>` : ""}
@@ -1312,11 +1312,13 @@ function openSingleBookFlow(book){
   openFormatQuestion(book, (format) => {
     let qty = 1;
     const unitInfo = bookFormatPriceInfo(book, format);
+    const swagOn = bookSwagOffered(book) && swagPicks.has(book.id);
+    const swagAmt = swagOn ? parseFloat(book.swagPrice) : 0;
     const formatPrefix = (bookFormats(book).length > 1 || format === "specialEdition") ? `${escapeHtml(formatLabel(format, book))} — ` : "";
     openModal(`
       <div class="eyebrow">${escapeHtml(book.author)}</div>
-      <div class="modal-title" id="sqTitle">${escapeHtml(book.title)}</div>
-      <div class="modal-sub" id="sqSub">${formatPrefix}${money(unitInfo.price)} each</div>
+      <div class="modal-title" id="sqTitle">${escapeHtml(book.title)}${swagOn ? " + Swag pack" : ""}</div>
+      <div class="modal-sub" id="sqSub">${formatPrefix}${money(unitInfo.price + swagAmt)} each${swagOn ? ` <span style="opacity:.7;">(${money(unitInfo.price)} book + ${money(swagAmt)} swag pack)</span>` : ""}</div>
       <div class="field">
         <label>How many copies?</label>
         <div class="qty-stepper">
@@ -1325,56 +1327,13 @@ function openSingleBookFlow(book){
           <button id="qtyPlus">+</button>
         </div>
       </div>
-      ${bookSwagOffered(book) ? `
-      <div class="field" style="margin-bottom:6px;">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:normal;">
-          <input type="checkbox" id="bookBox" style="width:auto;margin:0;" checked>
-          <span><strong>The book</strong> <strong>(${money(unitInfo.price)} each)</strong></span>
-        </label>
-      </div>
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:normal;">
-          <input type="checkbox" id="swagBox" style="width:auto;margin:0;"${swagPicks.has(book.id) ? " checked" : ""}>
-          <span><strong>Swag Pack</strong> <strong>(+${money(parseFloat(book.swagPrice))} each)</strong></span>
-        </label>
-        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</div>
-      </div>` : ""}
       <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
     `, (card)=>{
       const qtyVal = card.querySelector('#qtyVal');
-      // With the Swag Pack ticked, the heading becomes "Title + Swag pack" and the
-      // price underneath is the book plus the Swag Pack, per copy.
-      const swagBoxEl = card.querySelector('#swagBox');
-      const bookBoxEl = card.querySelector('#bookBox');
-      function refreshSwagHeading(){
-        const on = !!(swagBoxEl && swagBoxEl.checked);
-        const bookOn = !bookBoxEl || bookBoxEl.checked;
-        const sw = on ? parseFloat(book.swagPrice) : 0;
-        if(!bookOn){
-          card.querySelector('#sqTitle').textContent = (on ? "Swag pack - " + book.title : book.title);
-          card.querySelector('#sqSub').innerHTML = on ? `<strong>${money(sw)}</strong> each` : "Pick the book, the Swag pack, or both";
-          return;
-        }
-        card.querySelector('#sqTitle').textContent = book.title + (on ? " + Swag pack" : "");
-        card.querySelector('#sqSub').innerHTML = on
-          ? `${formatPrefix}<strong>${money(unitInfo.price + sw)}</strong> each <span style="opacity:.7;">(${money(unitInfo.price)} book + ${money(sw)} Swag pack)</span>`
-          : `${formatPrefix}${money(unitInfo.price)} each`;
-      }
-      if(swagBoxEl){ swagBoxEl.onchange = refreshSwagHeading; if(bookBoxEl) bookBoxEl.onchange = refreshSwagHeading; refreshSwagHeading(); }
       card.querySelector('#qtyMinus').onclick = () => { qty = Math.max(1, qty-1); qtyVal.textContent = qty; };
       card.querySelector('#qtyPlus').onclick = () => { qty = Math.min(20, qty+1); qtyVal.textContent = qty; };
       card.querySelector('#qtyNextBtn').onclick = () => {
-        const sb = card.querySelector('#swagBox');
-        const bookOn = !bookBoxEl || bookBoxEl.checked;
-        if(!bookOn && !(sb && sb.checked)){ showToast("Pick the book, the Swag pack, or both"); return; }
-        if(!bookOn){
-          closeModal();
-          confirmSwagOnly([book],
-            () => { swagPicks.delete(book.id); addLinesToCart(Array.from({length: qty}, () => makeSwagOnlyLine(book))); },
-            () => { _swagNext = { bookId: book.id, price: parseFloat(book.swagPrice) }; openSignedQuestion(book, qty, format); });
-          return;
-        }
-        _swagNext = (sb && sb.checked) ? { bookId: book.id, price: parseFloat(book.swagPrice) } : null;
+        _swagNext = swagOn ? { bookId: book.id, price: parseFloat(book.swagPrice) } : null;
         closeModal(); openSignedQuestion(book, qty, format);
       };
     });
@@ -1509,16 +1468,20 @@ function startGroupSigningFlow(books, presetSwag){
     }
   }
   const setTotal = prices.reduce((a,b) => a + b, 0);
-  const seriesLabel = escapeHtml(books[0].seriesName || "");
+  const seriesNameEsc = escapeHtml(books[0].seriesName || "");
+  const _gSwagN = presetSwag ? books.filter(b => bookSwagOffered(b) && presetSwag.has(b.id)).length : 0;
+  const _gSwagAmt = presetSwag ? books.filter(b => bookSwagOffered(b) && presetSwag.has(b.id)).reduce((t,b) => t + parseFloat(b.swagPrice), 0) : 0;
+  const _gSwagAll = _gSwagN > 0 && _gSwagN >= books.filter(bookSwagOffered).length;
+  const _gSwagTxt = !_gSwagN ? "" : (allSameSeries ? (_gSwagAll ? " + series swag pack" : ` + ${_gSwagN} swag pack${_gSwagN === 1 ? "" : "s"}`) : ` + ${_gSwagN} swag pack${_gSwagN === 1 ? "" : "s"}`);
 
   // First question: how many copies of the whole series / group? Each copy
   // is its own set (its own series row in the cart), so one set can be
   // signed or personalized differently from another.
   let qty = 1;
   openModal(`
-    <div class="eyebrow">${seriesLabel}</div>
-    <div class="modal-title">${allSameSeries ? "The whole series" : "These " + books.length + " books"}</div>
-    <div class="modal-sub">${books.length} ${books.length === 1 ? "book" : "books"} \u2014 ${money(setTotal)} per ${allSameSeries ? "series" : "set"}</div>
+    <div class="eyebrow">${seriesNameEsc}</div>
+    <div class="modal-title">${allSameSeries ? escapeHtml(seriesLabel(books[0].seriesName || "")) : "These " + books.length + " books"}${_gSwagTxt}</div>
+    <div class="modal-sub">${books.length} ${books.length === 1 ? "book" : "books"} \u2014 ${money(setTotal + _gSwagAmt)} per ${allSameSeries ? "series" : "set"}</div>
     <div class="field">
       <label>${allSameSeries ? "How many copies of this series do you want?" : "How many copies of this group of books?"}</label>
       <div class="qty-stepper">
@@ -1548,7 +1511,7 @@ function startGroupSigningFlow(books, presetSwag){
           <span style="font-weight:700;font-size:13px;">+${money(parseFloat(b.swagPrice))}</span>
         </label>`).join("");
       openModal(`
-        <div class="eyebrow">${seriesLabel}</div>
+        <div class="eyebrow">${seriesNameEsc}</div>
         <div class="modal-title">Swag Packs</div>
         <div class="modal-sub">${n === 1 ? "1 of the " + books.length + " books" : n + " of the " + books.length + " books"} in ${allSameSeries ? "this series" : "this group"} ${n === 1 ? "has a Swag Pack" : "have Swag Packs"} available. Check the ones you\u2019d like to add.</div>
         <div style="margin:0 0 12px;">${rows}</div>
