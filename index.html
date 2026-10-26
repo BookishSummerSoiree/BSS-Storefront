@@ -1123,7 +1123,7 @@ function openSeriesListModal(book, siblings, pre){
         <span style="flex:1;">Entire series</span>
         <span style="white-space:nowrap;">${seriesSetInfo(book) && seriesSetInfo(book).strike !== null ? `<span class="strike">${money(seriesSetInfo(book).strike)}</span>` : ""}<strong>${money(wholePrice)}</strong></span>
       </label>
-      ${seriesDiscountLabel(book) ? `<div style="margin:0 0 4px 34px;font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
+      ${seriesDiscountLabel(book) ? `<div style="margin:-6px 4px 4px 0;text-align:right;font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
       ${swagBooks.length ? `<label class="series-list-item sl-plain" style="${sub}padding-top:4px;padding-bottom:4px;">
         <input type="checkbox" id="slAllSwag">
         <span>All available swag packs <strong>${money(allSwagTotal)}</strong></span>
@@ -1981,12 +1981,11 @@ function renderCart(app){
       row.innerHTML = `
         <div class="cart-line-cover">${seriesCover ? `<img src="${coverSrc(seriesCover)}" alt="">` : ""}</div>
         <div class="cart-line-info">
-          <div class="cart-line-title">${escapeHtml(seriesLabel(first.seriesName || first.title))}</div>
+          <div class="cart-line-title">${escapeHtml(seriesLabel(first.seriesName || first.title))}${seriesSwagSuffix(lines, first)}</div>
           <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
           <div class="cart-line-variants">
             <div class="cart-line-meta">${lines.length} book${lines.length===1?"":"s"}: ${escapeHtml(bookTitles)}</div>
             <div class="cart-line-meta">${escapeHtml(variantDescriptionPlain(Object.assign({}, first, {swag:false})))}</div>
-            ${lines.some(l => l.swag) ? `<div class="cart-line-meta">+ ${lines.filter(l => l.swag).length} swag pack${lines.filter(l => l.swag).length === 1 ? "" : "s"} (${money(lines.reduce((s,l) => s + (l.swag ? (parseFloat(l.swagPrice)||0) : 0), 0))})</div>` : ""}
           </div>
         </div>
         <div class="cart-line-right">
@@ -2081,6 +2080,12 @@ function renderCart(app){
 /* =========================================================
    CHECKOUT
 ========================================================= */
+function seriesSwagSuffix(lines, first){
+  const n = lines.filter(l => l.swag).length;
+  if(!n) return "";
+  const offered = catalog.filter(b => b.isSeries && b.author === first.author && b.seriesName === first.seriesName && bookSwagOffered(b)).length;
+  return n >= offered ? " + series swag pack" : ` + ${n} swag pack${n === 1 ? "" : "s"}`;
+}
 function seriesLabel(n){
   n = String(n||"").trim();
   return /\bseries\b/i.test(n) ? n : (n ? n + " series" : "Series");
