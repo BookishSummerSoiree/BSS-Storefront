@@ -131,6 +131,7 @@
     background:rgba(12,30,61,0.08); border:none;
   }
   .book-swag-note{ margin:2px 0 8px; font-size:13px; line-height:1.4; }
+  .req{ color:var(--terracotta); }
   .book-btn-row{ display:flex; flex-wrap:wrap; gap:6px; }
   .book-pick-btn{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:10.5px; letter-spacing:.01em; color:var(--navy); background:#fff; border:1.5px solid var(--navy); border-radius:999px; padding:5px 10px; cursor:pointer; }
   .book-pick-btn.book-pick-book{ background:var(--navy); color:#fff; }
@@ -2111,7 +2112,8 @@ function renderCheckout(app){
 
   const form = document.createElement('div');
   form.innerHTML = `
-    <div class="field"><label>Your name</label><input type="text" id="buyerName"></div>
+    <div class="field"><label>First name <span class="req">*</span></label><input type="text" id="buyerFirst" autocomplete="given-name"></div>
+    <div class="field"><label>Last name <span class="req">*</span></label><input type="text" id="buyerLast" autocomplete="family-name"></div>
     <div class="field"><label>Email address</label><input type="email" id="buyerEmail"><div class="help">Your order confirmation will go here.</div></div>
   `;
   app.appendChild(form);
@@ -2130,7 +2132,10 @@ function renderCheckout(app){
 }
 
 async function submitCheckout(btn){
-  const name = document.getElementById('buyerName').value.trim();
+  const first = document.getElementById('buyerFirst').value.trim();
+  const last = document.getElementById('buyerLast').value.trim();
+  if(!first || !last){ showToast("Please enter your first and last name"); return; }
+  const name = first + " " + last;
   const email = document.getElementById('buyerEmail').value.trim();
   if(!email || email.indexOf("@") === -1){ showToast("Please enter a valid email"); return; }
   if(cart.length === 0){ showToast("Your cart is empty"); return; }
