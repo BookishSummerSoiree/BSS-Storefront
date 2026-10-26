@@ -2059,11 +2059,15 @@ function renderCart(app){
   totalRow.className = "cart-total-row";
   const taxRow = document.createElement('div');
   taxRow.style.cssText = "display:flex;justify-content:space-between;font-size:14px;color:#6b7080;margin:0 0 6px;";
-  taxRow.innerHTML = `<span>Books ${money(cartTotal())} + sales tax (${SALES_TAX_PCT}%)</span><span>${money(cartTax())}</span>`;
+  taxRow.innerHTML = `<span>Sales tax (${SALES_TAX_PCT}%)</span><span>${money(cartTax())}</span>`;
+  const subRow = document.createElement('div');
+  subRow.style.cssText = taxRow.style.cssText;
+  subRow.innerHTML = `<span>Subtotal</span><span>${money(cartTotal())}</span>`;
   totalRow.innerHTML = `<span>Total</span><span>${money(cartTotalWithTax())}</span>`;
   const finalNote = document.createElement('div');
   finalNote.style.cssText = "font-size:12px;color:#6b7080;margin:6px 0 14px;text-align:right;";
   finalNote.textContent = "All sales are final. No refunds.";
+  app.appendChild(subRow);
   app.appendChild(taxRow);
   app.appendChild(totalRow);
   app.appendChild(finalNote);
