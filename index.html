@@ -566,8 +566,20 @@ function seriesPriceHtml(book){
     + (lbl ? `<div style="font-size:12px;color:var(--terracotta,#E4593F);font-weight:600;margin-top:2px;">${escapeHtml(lbl)}</div>` : "");
 }
 
+// Items in the cart as the customer sees them: a book (with or without its
+// swag pack) is 1, a whole series (with or without its series swag pack) is 1
+// per set, and a swag pack bought by itself is 1.
+function cartItemCount(){
+  const sets = new Set();
+  let n = 0;
+  cart.forEach(l => {
+    if(l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)) sets.add(l.seriesGroupId);
+    else n++;
+  });
+  return n + sets.size;
+}
 function updateCartBadge(){
-  document.getElementById('cartBadge').textContent = cart.length;
+  document.getElementById('cartBadge').textContent = cartItemCount();
 }
 // Excludes copies that are part of a still-complete series group — those
 // show up on the Cart page as one series line, not a per-book count, so
