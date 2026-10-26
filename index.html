@@ -1704,6 +1704,12 @@ function removeCartLine(cartLineId){
 function cartTotal(){
   return cart.reduce((sum,l) => sum + lineAmount(l), 0);
 }
+/* Sales tax: every book is picked up at the Soir\u00e9e in Provo, so the whole
+   order is taxed at Provo's combined rate. Must match TAX_PARTS in Code.gs
+   (the server works out the real amount; this only shows it). */
+const SALES_TAX_PCT = 7.45;
+function cartTax(){ return Math.round(Math.round(cartTotal() * 100) * SALES_TAX_PCT / 100) / 100; }
+function cartTotalWithTax(){ return Math.round((cartTotal() + cartTax()) * 100) / 100; }
 
 /* ---- Cart grouping ----
    The cart itself stays one row per physical copy (cartLineId) — that's
@@ -2051,10 +2057,14 @@ function renderCart(app){
 
   const totalRow = document.createElement('div');
   totalRow.className = "cart-total-row";
-  totalRow.innerHTML = `<span>Total</span><span>${money(cartTotal())}</span>`;
+  const taxRow = document.createElement('div');
+  taxRow.style.cssText = "display:flex;justify-content:space-between;font-size:14px;color:#6b7080;margin:0 0 6px;";
+  taxRow.innerHTML = `<span>Books ${money(cartTotal())} + sales tax (${SALES_TAX_PCT}%)</span><span>${money(cartTax())}</span>`;
+  totalRow.innerHTML = `<span>Total</span><span>${money(cartTotalWithTax())}</span>`;
   const finalNote = document.createElement('div');
   finalNote.style.cssText = "font-size:12px;color:#6b7080;margin:6px 0 14px;text-align:right;";
   finalNote.textContent = "All sales are final. No refunds.";
+  app.appendChild(taxRow);
   app.appendChild(totalRow);
   app.appendChild(finalNote);
 
@@ -2111,7 +2121,7 @@ function renderCheckout(app){
   const parts = [];
   if(bookCount) parts.push(`${bookCount} book${bookCount===1?"":"s"}`);
   if(setCount) parts.push(`${setCount} series set${setCount===1?"":"s"}`);
-  sub.textContent = `${parts.join(" and ")} — ${money(cartTotal())} total`;
+  sub.textContent = `${parts.join(" and ")} — ${money(cartTotalWithTax())} total with ${SALES_TAX_PCT}% sales tax`;
   app.appendChild(sub);
 
   const form = document.createElement('div');
@@ -2129,7 +2139,7 @@ function renderCheckout(app){
 
   const payBtn = document.createElement('button');
   payBtn.className = "btn btn-primary btn-block";
-  payBtn.textContent = `Pay ${money(cartTotal())}`;
+  payBtn.textContent = `Pay ${money(cartTotalWithTax())}`;
   payBtn.onclick = () => submitCheckout(payBtn);
   app.appendChild(payBtn);
 
