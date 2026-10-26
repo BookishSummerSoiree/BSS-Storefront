@@ -1114,7 +1114,6 @@ function openSeriesListModal(book, siblings, pre){
     <div class="sl-group">
     <label class="series-list-item sl-plain">
       <input type="checkbox" class="sl-book" data-idx="${i}"${(!pre || b.id === pre.id) ? " checked" : ""}>
-      ${b.coverUrl ? `<img src="${coverSrc(b.coverUrl)}" alt="">` : `<div style="width:36px;height:52px;background:var(--cream);border-radius:4px;flex-shrink:0;"></div>`}
       <span style="flex:1;">${escapeHtml(b.title)}${b.seriesBookNumber ? ` <span style="opacity:.6;font-size:12px;">(Book ${escapeHtml(b.seriesBookNumber)})</span>` : ""}</span>
       <span style="font-size:13px;white-space:nowrap;">${priceOf(b)}</span>
     </label>
@@ -1126,12 +1125,15 @@ function openSeriesListModal(book, siblings, pre){
   `).join("");
 
   openModal(`
-    <div class="eyebrow">${escapeHtml(book.seriesName)}</div>
-    <div class="modal-title">Books in this series</div>
+    <div class="eyebrow">${escapeHtml(pre ? book.title : book.seriesName)}</div>
+    <div class="modal-title">${pre ? "This book is part of a series." : "Books in this series"}</div>
+    ${pre ? `<div class="modal-sub">"${escapeHtml(book.seriesName)}" has ${siblings.length} book${siblings.length === 1 ? "" : "s"}.</div>
+    <div class="radio-group" style="margin-bottom:12px;"><div class="radio-option" id="slJustThis"><span>I only want this book from the series</span></div></div>` : ""}
+    <div style="background:var(--cream);border:1.5px solid rgba(12,30,61,0.12);border-radius:12px;padding:8px 12px;margin-bottom:14px;">
     <div class="sl-head">
       <label class="series-list-item sl-plain" style="font-weight:700;padding-bottom:2px;">
         <input type="checkbox" id="slAll">
-        <span style="flex:1;">Entire series</span>
+        <span style="flex:1;">Add the whole series to my cart</span>
         <span style="white-space:nowrap;">${seriesSetInfo(book) && seriesSetInfo(book).strike !== null ? `<span class="strike">${money(seriesSetInfo(book).strike)}</span>` : ""}<strong>${money(wholePrice)}</strong></span>
       </label>
       ${seriesDiscountLabel(book) ? `<div style="margin:-6px 4px 4px 0;text-align:right;font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
@@ -1140,7 +1142,8 @@ function openSeriesListModal(book, siblings, pre){
         <span>All available swag packs <strong>${money(allSwagTotal)}</strong></span>
       </label>` : ""}
     </div>
-    <div style="margin-bottom:14px;">${itemsHtml}</div>
+    <div>${itemsHtml}</div>
+    </div>
     <div id="slTotal" style="margin:0 0 12px;font-size:14px;font-weight:600;"></div>
     <button class="btn btn-primary btn-block" id="slAdd">Add to cart</button>
   `, (card)=>{
@@ -1159,6 +1162,8 @@ function openSeriesListModal(book, siblings, pre){
       card.querySelector('#slTotal').textContent = picked.length === 0 ? (swagSum > 0 ? "Swag packs " + money(swagSum) : "Pick at least one book or swag pack")
         : (swagSum > 0 ? money(base) + " + swag packs " + money(swagSum) + " = " + money(base + swagSum) : "Total " + money(base));
     };
+    const justThis = card.querySelector('#slJustThis');
+    if(justThis) justThis.onclick = () => { closeModal(); openSingleBookFlow(book); };
     all.onchange = () => { books.forEach(x => x.checked = all.checked); refresh(); };
     if(allSwag) allSwag.onchange = () => {
       swags.forEach(x => { x.checked = allSwag.checked; });
