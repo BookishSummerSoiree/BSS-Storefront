@@ -588,7 +588,7 @@ function completeSeriesGroupIdsFor(author, seriesName){
 }
 // Asks before adding a second (or third...) complete set of the same
 // series, instead of silently stacking duplicate series lines in the cart.
-function confirmAddAnotherSeriesSet(siblings, book){
+function confirmAddAnotherSeriesSet(siblings, book, presetSwag){
   openModal(`
     <div class="modal-title">Wait, this series is already in your cart.</div>
     <div class="modal-sub">Would you like to add another?</div>
@@ -600,7 +600,7 @@ function confirmAddAnotherSeriesSet(siblings, book){
   `, (card)=>{
     card.querySelector('#addAnotherYes').onclick = () => {
       closeModal();
-      startGroupSigningFlow(siblings);
+      startGroupSigningFlow(siblings, presetSwag);
     };
     card.querySelector('#addAnotherOne').onclick = () => {
       closeModal();
@@ -916,7 +916,7 @@ function renderBrowse(app){
           ${bookDiscountLabel(book) ? `<div style="font-size:12px;font-weight:600;margin:-2px 0 6px;color:var(--terracotta,#E4593F);">${escapeHtml(bookDiscountLabel(book))}</div>` : ""}
           ${bookSwagOffered(book) ? (() => {
             const bl = cart.filter(l => l.bookId === book.id && !l.seriesGroupId);
-            const allHave = bl.length > 0 && bl.every(l => l.swag);
+            const allHave = cart.some(l => l.bookId === book.id + "::swag") || (bl.length > 0 && bl.every(l => l.swag));
             return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : "This book has a Swag Pack available for " + money(parseFloat(book.swagPrice)) + `<label><input type="checkbox" class="book-swag-box"${(bl.length === 0 && swagPicks.has(book.id)) ? " checked" : ""}> Add Swag Pack</label>`}</div>`;
           })() : ""}
           <div class="book-card-actions">
@@ -991,7 +991,7 @@ function renderBrowse(app){
       }
       const singleBtn = card.querySelector('.book-single-btn');
       if(singleBtn){
-        singleBtn.onclick = (e) => { e.stopPropagation(); openSingleBookFlow(book); };
+        singleBtn.onclick = (e) => { e.stopPropagation(); openBookFlow(book); };
       }
       const plusBtn = card.querySelector('.book-cart-plus');
       const minusBtn = card.querySelector('.book-cart-minus');
@@ -1057,7 +1057,7 @@ function openSeriesChoiceModal(book){
     <div class="modal-sub">"${escapeHtml(book.seriesName)}" has ${siblings.length} book${siblings.length===1?"":"s"}.</div>
     <div class="radio-group">
       <div class="radio-option" id="optWholeSeries">
-        <span>Add the whole series to my cart${setPriceLabel ? ` — ${seriesPriceHtml(book)}` : ""}</span>
+        <span>Add the whole series to my cart${setPriceLabel ? ` — ${seriesPriceHtml(book)}` : ""}${siblings.filter(bookSwagOffered).length ? `<span style="display:block;font-size:12px;opacity:.8;margin-top:3px;">You can add the Swag Packs for the books that have them on the next screen.</span>` : ""}</span>
       </div>
       <div class="radio-option" id="optSeeOthers"><span>See the other books in the series</span></div>
       <div class="radio-option" id="optJustThis"><span>I only want this book from the series</span></div>
@@ -1087,39 +1087,94 @@ function openSeriesChoiceModal(book){
 
 function openSeriesListModal(book, siblings){
   const setPrice = seriesEffectivePrice(book);
+  const sumPrice = siblings.reduce((t,b) => t + effectivePrice(b), 0);
+  const wholePrice = setPrice !== null ? setPrice : sumPrice;
+  const swagBooks = siblings.filter(bookSwagOffered);
+  const allSwagTotal = swagBooks.reduce((t,b) => t + parseFloat(b.swagPrice), 0);
+  const sub = "margin-left:28px;font-size:13px;";
   const itemsHtml = siblings.map((b,i)=>`
     <label class="series-list-item">
-      <input type="checkbox" data-idx="${i}" checked>
+      <input type="checkbox" class="sl-book" data-idx="${i}" checked>
       ${b.coverUrl ? `<img src="${coverSrc(b.coverUrl)}" alt="">` : `<div style="width:36px;height:52px;background:var(--cream);border-radius:4px;flex-shrink:0;"></div>`}
       <span style="flex:1;">${escapeHtml(b.title)}${b.seriesBookNumber ? ` <span style="opacity:.6;font-size:12px;">(Book ${escapeHtml(b.seriesBookNumber)})</span>` : ""}</span>
       <span style="font-weight:700;font-size:13px;">${money(effectivePrice(b))}</span>
     </label>
+    ${bookSwagOffered(b) ? `<label class="series-list-item" style="${sub}padding-top:0;">
+      <input type="checkbox" class="sl-swag" data-idx="${i}"${swagPicks.has(b.id) ? " checked" : ""}>
+      <span style="flex:1;">Swag pack</span>
+      <span style="font-weight:700;">+${money(parseFloat(b.swagPrice))}</span>
+    </label>` : ""}
   `).join("");
 
   openModal(`
     <div class="eyebrow">${escapeHtml(book.seriesName)}</div>
     <div class="modal-title">Books in this series</div>
-    <div style="margin-bottom:16px;">${itemsHtml}</div>
-    <div class="btn-row" style="flex-direction:column;align-items:stretch;">
-      <button class="btn btn-primary" id="addWholeBtn">Add entire series to my cart${setPrice!==null ? ` — ${money(setPrice)}` : ""}</button>
-      ${seriesDiscountLabel(book) ? `<div style="text-align:center;font-size:12px;font-weight:600;margin-top:6px;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
-      <button class="btn btn-secondary" id="addSelectedBtn" style="margin-top:10px;">Add selected books</button>
+    <div style="margin-bottom:12px;">
+      <label class="series-list-item" style="font-weight:700;">
+        <input type="checkbox" id="slAll" checked>
+        <span style="flex:1;">Entire series</span>
+        <span>${money(wholePrice)}</span>
+      </label>
+      ${seriesDiscountLabel(book) ? `<div style="margin:-4px 0 6px 28px;font-size:12px;font-weight:600;color:var(--terracotta,#E4593F);">${escapeHtml(seriesDiscountLabel(book))}</div>` : ""}
+      ${swagBooks.length ? `<label class="series-list-item" style="${sub}padding-top:0;">
+        <input type="checkbox" id="slAllSwag">
+        <span style="flex:1;">All available swag packs</span>
+        <span>(${money(allSwagTotal)})</span>
+      </label>` : ""}
     </div>
+    <div style="margin-bottom:14px;">${itemsHtml}</div>
+    <div id="slTotal" style="margin:0 0 12px;font-size:14px;font-weight:600;"></div>
+    <button class="btn btn-primary btn-block" id="slAdd">Add to cart</button>
   `, (card)=>{
-    card.querySelector('#addWholeBtn').onclick = () => {
+    const books = Array.from(card.querySelectorAll('.sl-book'));
+    const swags = Array.from(card.querySelectorAll('.sl-swag'));
+    const all = card.querySelector('#slAll'), allSwag = card.querySelector('#slAllSwag');
+    const swagFor = i => swags.find(x => x.dataset.idx === i);
+    const bookFor = i => books.find(x => x.dataset.idx === i);
+    const wholeSelected = () => books.every(x => x.checked);
+    const refresh = () => {
+      all.checked = wholeSelected();
+      if(allSwag) allSwag.checked = swags.length > 0 && swags.every(x => x.checked);
+      const picked = books.filter(x => x.checked).map(x => siblings[+x.dataset.idx]);
+      const swagSum = swags.filter(x => x.checked).reduce((t,x) => t + parseFloat(siblings[+x.dataset.idx].swagPrice), 0);
+      const base = wholeSelected() ? wholePrice : picked.reduce((t,b) => t + effectivePrice(b), 0);
+      card.querySelector('#slTotal').textContent = picked.length === 0 ? (swagSum > 0 ? "Swag packs " + money(swagSum) : "Pick at least one book or swag pack")
+        : (swagSum > 0 ? money(base) + " + swag packs " + money(swagSum) + " = " + money(base + swagSum) : "Total " + money(base));
+    };
+    all.onchange = () => { books.forEach(x => x.checked = all.checked); refresh(); };
+    if(allSwag) allSwag.onchange = () => {
+      swags.forEach(x => { x.checked = allSwag.checked; });
+      refresh();
+    };
+    books.forEach(x => x.onchange = () => refresh());
+    swags.forEach(x => x.onchange = () => refresh());
+    refresh();
+    card.querySelector('#slAdd').onclick = () => {
+      let checked = books.filter(x => x.checked).map(x => siblings[+x.dataset.idx]);
+      const swagIds = new Set(swags.filter(x => x.checked).map(x => siblings[+x.dataset.idx].id));
+      if(checked.length === 0 && swagIds.size === 0){ showToast("Pick at least one book or swag pack"); return; }
+      const only = siblings.filter(b => swagIds.has(b.id) && !checked.includes(b));
       closeModal();
-      if(cartSeriesCountForBook(book.id) > 0){
-        confirmAddAnotherSeriesSet(siblings, book);
+      const proceed = (chk) => {
+        if(chk.length === 0) return;
+        const ids = new Set(chk.filter(b => swagIds.has(b.id)).map(b => b.id));
+        if(chk.length === siblings.length){
+          if(cartSeriesCountForBook(book.id) > 0){ confirmAddAnotherSeriesSet(siblings, book, ids); return; }
+          startGroupSigningFlow(siblings, ids);
+        } else if(chk.length === 1){
+          swagPicks.delete(chk[0].id); if(ids.has(chk[0].id)) swagPicks.add(chk[0].id);
+          openSingleBookFlow(chk[0]);
+        } else {
+          startGroupSigningFlow(chk, ids);
+        }
+      };
+      if(only.length){
+        confirmSwagOnly(only,
+          () => { only.forEach(b => swagPicks.delete(b.id)); addLinesToCart(only.map(makeSwagOnlyLine)); proceed(checked); },
+          () => proceed(siblings.filter(b => checked.includes(b) || only.includes(b))));
         return;
       }
-      startGroupSigningFlow(siblings);
-    };
-    card.querySelector('#addSelectedBtn').onclick = () => {
-      const checked = Array.from(card.querySelectorAll('input[type="checkbox"]:checked')).map(cb => siblings[parseInt(cb.dataset.idx,10)]);
-      closeModal();
-      if(checked.length === 0){ showToast("Pick at least one book"); return; }
-      if(checked.length === 1){ openSingleBookFlow(checked[0]); }
-      else { startGroupSigningFlow(checked); }
+      proceed(checked);
     };
   });
 }
@@ -1168,6 +1223,31 @@ function bookSwagOffered(book){
 function lineAmount(l){
   return (parseFloat(l.unitPrice)||0) + (l.swag ? (parseFloat(l.swagPrice)||0) : 0);
 }
+// A Swag pack bought on its own (the buyer already has the book). It is a cart line with no
+// book price; checkout sends only the Swag pack line for it.
+function makeSwagOnlyLine(book){
+  return {
+    cartLineId: 'cl_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8),
+    bookId: book.id + "::swag", author: book.author, title: book.title, coverUrl: book.coverUrl,
+    unitPrice: 0, signed: false, personalizedName: "", seriesGroupId: null, seriesName: book.seriesName || "",
+    seriesCoverUrl: "", format: "swag", formatLabel: "", swag: true, swagPrice: parseFloat(book.swagPrice), swagOnly: true
+  };
+}
+// "You've selected only the swag pack for ..." check. onYes keeps it swag-only; onBoth adds the book too.
+function confirmSwagOnly(books, onYes, onBoth){
+  const names = books.map(b => `<strong>${escapeHtml(b.title)}</strong>`).join(books.length === 2 ? " and " : ", ");
+  openModal(`
+    <div class="eyebrow">Double-checking</div>
+    <div class="modal-title">You\u2019ve selected only the swag pack${books.length === 1 ? "" : "s"} for ${names}.</div>
+    <div class="btn-row" style="flex-direction:column;align-items:stretch;">
+      <button class="btn btn-primary" id="soYes">Yes</button>
+      <button class="btn btn-secondary" id="soBoth" style="margin-top:10px;">My mistake! I meant to select both. Please add the book${books.length === 1 ? "" : "s"} to my cart as well.</button>
+    </div>
+  `, (card)=>{
+    card.querySelector('#soYes').onclick = () => { closeModal(); onYes(); };
+    card.querySelector('#soBoth').onclick = () => { closeModal(); onBoth(); };
+  });
+}
 function openAddSwagToCartModal(book){
   const lacking = cart.filter(l => l.bookId === book.id && !l.seriesGroupId && !l.swag);
   if(!lacking.length) return;
@@ -1177,7 +1257,7 @@ function openAddSwagToCartModal(book){
     <div class="eyebrow">${escapeHtml(book.author)}</div>
     <div class="modal-title">Adding the ${escapeHtml(book.title)} Swag pack</div>
     <div class="modal-sub"><strong>${money(price)}</strong>${lacking.length > 1 ? " each" : ""}</div>
-    <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmark for this book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
+    <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. Things they might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
     ${lacking.length > 1 ? `
     <div class="field">
       <label>How many Swag packs? (you have ${lacking.length} copies in your cart)</label>
@@ -1223,12 +1303,18 @@ function openSingleBookFlow(book){
         </div>
       </div>
       ${bookSwagOffered(book) ? `
+      <div class="field" style="margin-bottom:6px;">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:normal;">
+          <input type="checkbox" id="bookBox" style="width:auto;margin:0;" checked>
+          <span><strong>The book</strong> <strong>(${money(unitInfo.price)} each)</strong></span>
+        </label>
+      </div>
       <div class="field">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:normal;">
           <input type="checkbox" id="swagBox" style="width:auto;margin:0;"${swagPicks.has(book.id) ? " checked" : ""}>
           <span><strong>Swag Pack</strong> <strong>(+${money(parseFloat(book.swagPrice))} each)</strong></span>
         </label>
-        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmark for this book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
+        <div style="margin:6px 0 0 28px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. Things they might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
       </div>` : ""}
       <button class="btn btn-primary btn-block" id="qtyNextBtn">Next</button>
     `, (card)=>{
@@ -1236,19 +1322,35 @@ function openSingleBookFlow(book){
       // With the Swag Pack ticked, the heading becomes "Title + Swag pack" and the
       // price underneath is the book plus the Swag Pack, per copy.
       const swagBoxEl = card.querySelector('#swagBox');
+      const bookBoxEl = card.querySelector('#bookBox');
       function refreshSwagHeading(){
         const on = !!(swagBoxEl && swagBoxEl.checked);
+        const bookOn = !bookBoxEl || bookBoxEl.checked;
         const sw = on ? parseFloat(book.swagPrice) : 0;
+        if(!bookOn){
+          card.querySelector('#sqTitle').textContent = book.title + (on ? " \u2014 Swag pack" : "");
+          card.querySelector('#sqSub').innerHTML = on ? `<strong>${money(sw)}</strong> each` : "Pick the book, the Swag pack, or both";
+          return;
+        }
         card.querySelector('#sqTitle').textContent = book.title + (on ? " + Swag pack" : "");
         card.querySelector('#sqSub').innerHTML = on
           ? `${formatPrefix}<strong>${money(unitInfo.price + sw)}</strong> each <span style="opacity:.7;">(${money(unitInfo.price)} book + ${money(sw)} Swag pack)</span>`
           : `${formatPrefix}${money(unitInfo.price)} each`;
       }
-      if(swagBoxEl){ swagBoxEl.onchange = refreshSwagHeading; refreshSwagHeading(); }
+      if(swagBoxEl){ swagBoxEl.onchange = refreshSwagHeading; if(bookBoxEl) bookBoxEl.onchange = refreshSwagHeading; refreshSwagHeading(); }
       card.querySelector('#qtyMinus').onclick = () => { qty = Math.max(1, qty-1); qtyVal.textContent = qty; };
       card.querySelector('#qtyPlus').onclick = () => { qty = Math.min(20, qty+1); qtyVal.textContent = qty; };
       card.querySelector('#qtyNextBtn').onclick = () => {
         const sb = card.querySelector('#swagBox');
+        const bookOn = !bookBoxEl || bookBoxEl.checked;
+        if(!bookOn && !(sb && sb.checked)){ showToast("Pick the book, the Swag pack, or both"); return; }
+        if(!bookOn){
+          closeModal();
+          confirmSwagOnly([book],
+            () => { swagPicks.delete(book.id); addLinesToCart(Array.from({length: qty}, () => makeSwagOnlyLine(book))); },
+            () => { _swagNext = { bookId: book.id, price: parseFloat(book.swagPrice) }; openSignedQuestion(book, qty, format); });
+          return;
+        }
         _swagNext = (sb && sb.checked) ? { bookId: book.id, price: parseFloat(book.swagPrice) } : null;
         closeModal(); openSignedQuestion(book, qty, format);
       };
@@ -1355,13 +1457,13 @@ function openNameFields(book, count, onDone){
 /* ---- Group signing flow: used when several DIFFERENT books are added
    together (whole series, or a few picked from the series list). One
    shared signed/personalized decision and name for the whole group. ---- */
-let _groupSwag = false;
-function startGroupSigningFlow(books){
-  _groupSwag = false;
+let _groupSwagIds = new Set();
+function startGroupSigningFlow(books, presetSwag){
+  _groupSwagIds = new Set();
   // Series-set pricing: if every book came from the same series and that
   // series has its own set price, prorate it across the books so the line
   // items sum to exactly the set price (last item absorbs rounding).
-  const allSameSeries = books.length > 0 && books.every(b => b.isSeries && b.seriesName === books[0].seriesName && b.author === books[0].author);
+  const allSameSeries = books.length > 0 && books.every(b => b.isSeries && b.seriesName === books[0].seriesName && b.author === books[0].author) && books.length === seriesSiblings(books[0]).length;   // the series price only applies to the complete series, not a few of its books
   let prices = books.map(b => effectivePrice(b));
   if(allSameSeries){
     const setPrice = seriesEffectivePrice(books[0]);
@@ -1410,23 +1512,41 @@ function startGroupSigningFlow(books){
     card.querySelector('#gqPlus').onclick = () => { qty = Math.min(20, qty+1); val.textContent = qty; };
     card.querySelector('#gqNextBtn').onclick = () => {
       closeModal();
-      _groupSwag = false;
+      _groupSwagIds = new Set();
       const swagBooks = books.filter(bookSwagOffered);
       if(!swagBooks.length){ groupSignedQuestion(books, prices, qty); return; }
-      const swagTotal = swagBooks.reduce((s,b) => s + parseFloat(b.swagPrice), 0);
+      // The swag packs were already chosen on the series screen: no second question.
+      if(presetSwag){ _groupSwagIds = new Set(books.filter(b => presetSwag.has(b.id)).map(b => b.id)); groupSignedQuestion(books, prices, qty); return; }
       const n = swagBooks.length;
+      const rows = swagBooks.map((b,i) => `
+        <label class="series-list-item" style="align-items:center;">
+          <input type="checkbox" data-i="${i}"${swagPicks.has(b.id) ? " checked" : ""}>
+          <span style="flex:1;">${escapeHtml(b.title)}${b.seriesBookNumber ? ` <span style="opacity:.6;font-size:12px;">(Book ${escapeHtml(b.seriesBookNumber)})</span>` : ""}</span>
+          <span style="font-weight:700;font-size:13px;">+${money(parseFloat(b.swagPrice))}</span>
+        </label>`).join("");
       openModal(`
         <div class="eyebrow">${seriesLabel}</div>
         <div class="modal-title">Swag Packs</div>
-        <div class="modal-sub">${n} of these books ${n === 1 ? "has a Swag Pack" : "have Swag Packs"}, for a total of ${money(swagTotal)} for ${allSameSeries ? "the whole series" : "all of these books"}${qty > 1 ? " (per set)" : ""}. Would you like to add ${n === 1 ? "it" : "that"}?</div>
-        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(stickers/bookmark for each book. Each book will have different swag, and no specific swag is guaranteed&mdash;but it's guaranteed to be awesome!)</div>
-        <div class="btn-row" style="flex-direction:column;align-items:stretch;">
-          <button class="btn btn-primary" id="gSwagYes">Yes, add the Swag Packs</button>
-          <button class="btn btn-secondary" id="gSwagNo" style="margin-top:10px;">No thanks</button>
-        </div>
+        <div class="modal-sub">${n === 1 ? "1 of the " + books.length + " books" : n + " of the " + books.length + " books"} in ${allSameSeries ? "this series" : "this group"} ${n === 1 ? "has a Swag Pack" : "have Swag Packs"} available. Check the ones you\u2019d like to add.</div>
+        <div style="margin:0 0 12px;">${rows}</div>
+        <div style="margin:0 0 14px;font-size:12px;font-style:italic;line-height:1.4;opacity:.85;">(swag packs are different for each book and determined by the author. Things they might include: stickers, bookmarks, magnets, and/or other items. If you’d like more specific information, please contact the author)</div>
+        <div id="gSwagTotal" style="margin:0 0 14px;font-size:14px;font-weight:600;"></div>
+        <button class="btn btn-primary btn-block" id="gSwagGo">Continue</button>
       `, (cs)=>{
-        cs.querySelector('#gSwagYes').onclick = () => { _groupSwag = true; closeModal(); groupSignedQuestion(books, prices, qty); };
-        cs.querySelector('#gSwagNo').onclick = () => { _groupSwag = false; closeModal(); groupSignedQuestion(books, prices, qty); };
+        const boxes = Array.from(cs.querySelectorAll('input[type="checkbox"]'));
+        const chosen = () => boxes.filter(x => x.checked).map(x => swagBooks[parseInt(x.dataset.i,10)]);
+        const refresh = () => {
+          const sw = chosen().reduce((t,b) => t + parseFloat(b.swagPrice), 0);
+          cs.querySelector('#gSwagTotal').textContent = sw > 0
+            ? (allSameSeries ? "Series " : "Books ") + money(setTotal) + " + Swag Packs " + money(sw) + " = " + money(setTotal + sw) + (qty > 1 ? " per set" : "")
+            : "No Swag Packs added";
+        };
+        boxes.forEach(x => x.onchange = refresh);
+        refresh();
+        cs.querySelector('#gSwagGo').onclick = () => {
+          _groupSwagIds = new Set(chosen().map(b => b.id));
+          closeModal(); groupSignedQuestion(books, prices, qty);
+        };
       });
     };
   });
@@ -1443,11 +1563,12 @@ function addGroupSets(books, prices, qty, signedNames){
     const name = signed ? (signedNames[n] || "") : "";
     books.forEach((b,i) => {
       const ln = makeCartLine(b, signed, name, prices[i], groupId);
-      if(_groupSwag && bookSwagOffered(b)){ ln.swag = true; ln.swagPrice = parseFloat(b.swagPrice); }
+      if(_groupSwagIds.has(b.id) && bookSwagOffered(b)){ ln.swag = true; ln.swagPrice = parseFloat(b.swagPrice); }
       lines.push(ln);
     });
   }
-  _groupSwag = false;
+  _groupSwagIds.forEach(id => swagPicks.delete(id));
+  _groupSwagIds = new Set();
   addLinesToCart(lines);
 }
 
@@ -1565,7 +1686,7 @@ function addLinesToCart(lines){
   cart = cart.concat(lines);
   saveCartToStorage();
   updateCartBadge();
-  showToast(lines.length === 1 ? "Added to cart" : `Added ${lines.length} books to cart`);
+  showToast(lines.every(l => l.swagOnly) ? (lines.length === 1 ? "Swag pack added to cart" : `Added ${lines.length} swag packs to cart`) : (lines.length === 1 ? "Added to cart" : `Added ${lines.length} books to cart`));
   // Refresh the screen so the book cards / cart show what was just added
   // (keeping the page where it was, so it doesn't jump back to the top).
   if(currentScreen === "cart" || currentScreen === "browse"){
@@ -1663,6 +1784,13 @@ function variantDescriptionPlain(line){
 // that format straight through with no need to ask again; the Browse
 // grid's combined "+" (no format passed) still asks, same as a fresh add.
 function incrementBookInCart(bookId, format){
+  if(String(bookId).endsWith("::swag")){
+    const ex = cart.find(l => l.bookId === bookId);
+    if(!ex) return;
+    cart.push(Object.assign({}, ex, { cartLineId: 'cl_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8) }));
+    saveCartToStorage(); updateCartBadge(); render();
+    return;
+  }
   let book = catalog.find(b => b.id === bookId);
   if(!book){
     const existing = cart.find(l => l.bookId === bookId && (!format || l.format === format));
@@ -1851,7 +1979,7 @@ function renderCart(app){
           <div class="cart-line-variants">
             <div class="cart-line-meta">${lines.length} book${lines.length===1?"":"s"}: ${escapeHtml(bookTitles)}</div>
             <div class="cart-line-meta">${escapeHtml(variantDescriptionPlain(Object.assign({}, first, {swag:false})))}</div>
-            ${lines.some(l => l.swag) ? `<div class="cart-line-meta">+ Swag packs for ${lines.filter(l => l.swag).length} of these books (${money(lines.reduce((s,l) => s + (l.swag ? (parseFloat(l.swagPrice)||0) : 0), 0))})</div>` : ""}
+            ${lines.some(l => l.swag) ? `<div class="cart-line-meta">+ ${lines.filter(l => l.swag).length} swag pack${lines.filter(l => l.swag).length === 1 ? "" : "s"} (${money(lines.reduce((s,l) => s + (l.swag ? (parseFloat(l.swagPrice)||0) : 0), 0))})</div>` : ""}
           </div>
         </div>
         <div class="cart-line-right">
@@ -1881,7 +2009,7 @@ function renderCart(app){
     row.innerHTML = `
       <div class="cart-line-cover">${first.coverUrl ? `<img src="${coverSrc(first.coverUrl)}" alt="">` : ""}</div>
       <div class="cart-line-info">
-        <div class="cart-line-title">${escapeHtml(first.title)}${allSwag ? " + Swag pack" : ""}</div>
+        <div class="cart-line-title">${escapeHtml(first.title)}${first.swagOnly ? " \u2014 Swag pack" : (allSwag ? " + Swag pack" : "")}</div>
         ${first.formatLabel ? `<div class="cart-line-meta" style="font-weight:700;color:var(--navy);">${escapeHtml(first.formatLabel)}</div>` : ""}
         <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
         <div class="cart-line-variants"></div>
@@ -1901,7 +2029,7 @@ function renderCart(app){
       const countPrefix = vLines.length > 1 ? `${vLines.length}× ` : "";
       const d = document.createElement('div');
       d.className = "cart-line-meta";
-      d.textContent = countPrefix + (vLines[0].signed && vLines[0].personalizedName ? `Signed — personalized to "${vLines[0].personalizedName}"` : (vLines[0].signed ? "Signed" : "Not signed")) + ((vLines[0].swag && !allSwag) ? " + Swag pack" : "");
+      d.textContent = countPrefix + (vLines[0].swagOnly ? "Swag pack only" : vLines[0].signed && vLines[0].personalizedName ? `Signed — personalized to "${vLines[0].personalizedName}"` : (vLines[0].signed ? "Signed" : "Not signed")) + ((vLines[0].swag && !allSwag) ? " + Swag pack" : "");
       variantsWrap.appendChild(d);
     });
 
@@ -2001,7 +2129,7 @@ async function submitCheckout(btn){
         buyerName: name,
         buyerEmail: email,
         lines: cart.reduce((out, l) => {
-          out.push({ author: l.author, title: l.title, unitPrice: l.unitPrice, signed: l.signed, personalizedName: l.personalizedName,
+          if(!l.swagOnly) out.push({ author: l.author, title: l.title, unitPrice: l.unitPrice, signed: l.signed, personalizedName: l.personalizedName,
             seriesGroupId: (l.seriesGroupId && isSeriesGroupComplete(l.seriesGroupId)) ? l.seriesGroupId : "", seriesName: l.seriesName || "" });
           // A Swag pack is its own priced line (same author, so it is paid out with their books).
           if(l.swag && parseFloat(l.swagPrice) > 0){
