@@ -985,8 +985,7 @@ function renderBrowse(app){
       if(seriesAddBtn){
         seriesAddBtn.onclick = (e) => {
           e.stopPropagation();
-          if(cartSeriesCountForBook(book.id) > 0){ confirmAddAnotherSeriesSet(seriesSiblings(book), book); return; }
-          startGroupSigningFlow(seriesSiblings(book));
+          openSeriesListModal(book, seriesSiblings(book));
         };
       }
       const singleBtn = card.querySelector('.book-single-btn');
@@ -1036,7 +1035,9 @@ function renderBrowse(app){
 ========================================================= */
 function openBookFlow(book){
   if(book.isSeries && book.seriesName){
-    openSeriesChoiceModal(book);
+    // Straight to the tick-box list: the book they tapped (and its swag pack,
+    // if they ticked it on the card) is already checked.
+    openSeriesListModal(book, seriesSiblings(book), book);
   } else {
     openSingleBookFlow(book);
   }
@@ -1085,7 +1086,7 @@ function openSeriesChoiceModal(book){
   });
 }
 
-function openSeriesListModal(book, siblings){
+function openSeriesListModal(book, siblings, pre){
   const setPrice = seriesEffectivePrice(book);
   const sumPrice = siblings.reduce((t,b) => t + effectivePrice(b), 0);
   const wholePrice = setPrice !== null ? setPrice : sumPrice;
@@ -1094,7 +1095,7 @@ function openSeriesListModal(book, siblings){
   const sub = "margin-left:28px;font-size:13px;";
   const itemsHtml = siblings.map((b,i)=>`
     <label class="series-list-item">
-      <input type="checkbox" class="sl-book" data-idx="${i}" checked>
+      <input type="checkbox" class="sl-book" data-idx="${i}"${(!pre || b.id === pre.id) ? " checked" : ""}>
       ${b.coverUrl ? `<img src="${coverSrc(b.coverUrl)}" alt="">` : `<div style="width:36px;height:52px;background:var(--cream);border-radius:4px;flex-shrink:0;"></div>`}
       <span style="flex:1;">${escapeHtml(b.title)}${b.seriesBookNumber ? ` <span style="opacity:.6;font-size:12px;">(Book ${escapeHtml(b.seriesBookNumber)})</span>` : ""}</span>
       <span style="font-weight:700;font-size:13px;">${money(effectivePrice(b))}</span>
@@ -1111,7 +1112,7 @@ function openSeriesListModal(book, siblings){
     <div class="modal-title">Books in this series</div>
     <div style="margin-bottom:12px;">
       <label class="series-list-item" style="font-weight:700;">
-        <input type="checkbox" id="slAll" checked>
+        <input type="checkbox" id="slAll">
         <span style="flex:1;">Entire series</span>
         <span>${money(wholePrice)}</span>
       </label>
