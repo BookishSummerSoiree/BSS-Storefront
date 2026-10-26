@@ -2241,9 +2241,12 @@ function renderOrdersInner(app){
       let html = `<div style="display:flex;justify-content:space-between;gap:10px;font-family:'Montserrat',sans-serif;font-size:13px;"><b>${esc(d)}</b><b>${money(o.total)}</b></div>`;
       o.items.forEach(it => {
         const tags = [it.signed ? "Signed" : "Not signed"].concat(it.personalizedName ? ['Personalized to ' + esc(it.personalizedName)] : []).join(" · ");
+        const books = (it.titles || []).map(t => { const m = /^(.*) \+ Swag pack$/.exec(String(t)); return m ? { title: m[1], swag: true } : { title: String(t), swag: false }; });
+        const anySwag = books.some(b => b.swag);
+        const heading = it.set ? seriesLabel(it.name) + (anySwag ? " + swag pack" : "") : (books.length ? books[0].title + (books[0].swag ? " + swag pack" : "") : String(it.name));
         html += `<div style="padding:10px 0;border-top:1px solid rgba(12,30,61,0.08);margin-top:10px;font-family:'Lora',serif;">`
-          + `<div style="display:flex;justify-content:space-between;gap:10px;"><span><b>${esc(it.set ? seriesLabel(it.name) : it.name)}</b><br><span style="font-size:12.5px;color:#6b7080;">by ${esc(it.author)}</span></span><span>${money(it.price)}</span></div>`
-          + (it.set ? `<div style="font-size:12.5px;color:#6b7080;margin-top:3px;">Includes: ${it.titles.map(esc).join(", ")}</div>` : "")
+          + `<div style="display:flex;justify-content:space-between;gap:10px;"><span><b>${esc(heading)}</b> <span style="font-size:12.5px;color:#6b7080;">by ${esc(it.author)}</span></span><span>${money(it.price)}</span></div>`
+          + (it.set ? `<ul style="margin:4px 0 0 20px;padding:0;font-size:12.5px;color:#6b7080;">${books.map(b => `<li>${esc(b.title)}${b.swag ? " + swag" : ""}</li>`).join("")}</ul>` : "")
           + `<div style="font-size:12.5px;color:#6b7080;margin-top:3px;">${tags}</div></div>`;
       });
       card.innerHTML = html;
