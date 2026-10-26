@@ -1328,7 +1328,7 @@ function openSingleBookFlow(book){
         const bookOn = !bookBoxEl || bookBoxEl.checked;
         const sw = on ? parseFloat(book.swagPrice) : 0;
         if(!bookOn){
-          card.querySelector('#sqTitle').textContent = book.title + (on ? " \u2014 Swag pack" : "");
+          card.querySelector('#sqTitle').textContent = (on ? "Swag pack - " + book.title : book.title);
           card.querySelector('#sqSub').innerHTML = on ? `<strong>${money(sw)}</strong> each` : "Pick the book, the Swag pack, or both";
           return;
         }
@@ -1974,7 +1974,7 @@ function renderCart(app){
       row.innerHTML = `
         <div class="cart-line-cover">${seriesCover ? `<img src="${coverSrc(seriesCover)}" alt="">` : ""}</div>
         <div class="cart-line-info">
-          <div class="cart-line-title">${escapeHtml(first.seriesName || first.title)} <span style="font-weight:400;opacity:.7;">— Series</span></div>
+          <div class="cart-line-title">${escapeHtml(seriesLabel(first.seriesName || first.title))}</div>
           <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
           <div class="cart-line-variants">
             <div class="cart-line-meta">${lines.length} book${lines.length===1?"":"s"}: ${escapeHtml(bookTitles)}</div>
@@ -2009,7 +2009,7 @@ function renderCart(app){
     row.innerHTML = `
       <div class="cart-line-cover">${first.coverUrl ? `<img src="${coverSrc(first.coverUrl)}" alt="">` : ""}</div>
       <div class="cart-line-info">
-        <div class="cart-line-title">${escapeHtml(first.title)}${first.swagOnly ? " \u2014 Swag pack" : (allSwag ? " + Swag pack" : "")}</div>
+        <div class="cart-line-title">${first.swagOnly ? "Swag pack - " + escapeHtml(first.title) : escapeHtml(first.title) + (allSwag ? " + Swag pack" : "")}</div>
         ${first.formatLabel ? `<div class="cart-line-meta" style="font-weight:700;color:var(--navy);">${escapeHtml(first.formatLabel)}</div>` : ""}
         <div class="cart-line-author">by ${escapeHtml(first.author)}</div>
         <div class="cart-line-variants"></div>
@@ -2074,6 +2074,10 @@ function renderCart(app){
 /* =========================================================
    CHECKOUT
 ========================================================= */
+function seriesLabel(n){
+  n = String(n||"").trim();
+  return /\bseries\b/i.test(n) ? n : (n ? n + " series" : "Series");
+}
 function renderCheckout(app){
   const heading = document.createElement('div');
   heading.className = "modal-title";
@@ -2132,7 +2136,7 @@ async function submitCheckout(btn){
           const sp = (l.swag && parseFloat(l.swagPrice) > 0) ? parseFloat(l.swagPrice) : 0;
           if(l.swagOnly){
             // Swag pack by itself: its own line.
-            out.push({ author: l.author, title: l.title + " \u2014 Swag pack", unitPrice: l.swagPrice, signed: false, personalizedName: "",
+            out.push({ author: l.author, title: "Swag pack - " + l.title, unitPrice: l.swagPrice, signed: false, personalizedName: "",
               seriesGroupId: "", seriesName: "" });
           } else {
             // Swag bought with a book rides on that book's line: "Book + Swag pack".
@@ -2220,7 +2224,7 @@ function renderOrdersInner(app){
       o.items.forEach(it => {
         const tags = [it.signed ? "Signed" : "Not signed"].concat(it.personalizedName ? ['Personalized to ' + esc(it.personalizedName)] : []).join(" · ");
         html += `<div style="padding:10px 0;border-top:1px solid rgba(12,30,61,0.08);margin-top:10px;font-family:'Lora',serif;">`
-          + `<div style="display:flex;justify-content:space-between;gap:10px;"><span><b>${esc(it.name)}${it.set ? " \u2014 Series" : ""}</b><br><span style="font-size:12.5px;color:#6b7080;">by ${esc(it.author)}</span></span><span>${money(it.price)}</span></div>`
+          + `<div style="display:flex;justify-content:space-between;gap:10px;"><span><b>${esc(it.set ? seriesLabel(it.name) : it.name)}</b><br><span style="font-size:12.5px;color:#6b7080;">by ${esc(it.author)}</span></span><span>${money(it.price)}</span></div>`
           + (it.set ? `<div style="font-size:12.5px;color:#6b7080;margin-top:3px;">Includes: ${it.titles.map(esc).join(", ")}</div>` : "")
           + `<div style="font-size:12.5px;color:#6b7080;margin-top:3px;">${tags}</div></div>`;
       });
