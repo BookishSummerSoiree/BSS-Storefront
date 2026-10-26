@@ -1264,7 +1264,7 @@ function confirmSwagOnly(books, onYes, onBoth){
     <div class="modal-title">You\u2019ve selected only the swag pack${books.length === 1 ? "" : "s"} for ${names}.</div>
     <div class="btn-row" style="flex-direction:column;align-items:stretch;">
       <button class="btn btn-primary" id="soYes">Yes</button>
-      <button class="btn btn-secondary" id="soBoth" style="margin-top:10px;">My mistake! I meant to select both. Please add the book${books.length === 1 ? "" : "s"} to my cart as well.</button>
+      <button class="btn btn-secondary" id="soBoth" style="margin-top:10px;">My mistake! Please add the book${books.length === 1 ? "" : "s"} to my cart as well.</button>
     </div>
   `, (card)=>{
     card.querySelector('#soYes').onclick = () => { closeModal(); onYes(); };
