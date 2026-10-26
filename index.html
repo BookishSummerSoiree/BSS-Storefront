@@ -127,15 +127,15 @@
   .book-single-btn:active{ transform:scale(0.98); }
   /* "Add entire series" is a quiet secondary action, not the main button */
   .book-series-add-btn{
-    font-size:11.5px; font-weight:600; padding:7px 14px; color:var(--navy);
+    font-size:10.5px; font-weight:600; padding:5px 11px; color:var(--navy);
     background:rgba(12,30,61,0.08); border:none;
   }
   .book-swag-note{ margin:2px 0 8px; font-size:13px; line-height:1.4; }
   .book-btn-row{ display:flex; flex-wrap:wrap; gap:6px; }
-  .book-pick-btn{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:11.5px; letter-spacing:.01em; color:var(--navy); background:#fff; border:1.5px solid var(--navy); border-radius:999px; padding:8px 12px; cursor:pointer; }
+  .book-pick-btn{ font-family:'Montserrat',sans-serif; font-weight:700; font-size:10.5px; letter-spacing:.01em; color:var(--navy); background:#fff; border:1.5px solid var(--navy); border-radius:999px; padding:5px 10px; cursor:pointer; }
   .book-pick-btn.book-pick-book{ background:var(--navy); color:#fff; }
   .lbl-short{ display:none; }
-  @media (max-width: 520px){ .lbl-long{ display:none; } .lbl-short{ display:inline; } .book-pick-btn{ padding:8px 10px; font-size:11px; } .book-btn-row{ gap:5px; } }
+  @media (max-width: 520px){ .lbl-long{ display:none; } .lbl-short{ display:inline; } .book-pick-btn{ padding:5px 9px; font-size:10.5px; } .book-btn-row{ gap:5px; } }
   .book-pick-btn:active{ transform:scale(0.98); }
   .book-swag-note label{ display:flex; align-items:center; gap:8px; margin-top:4px; font-weight:600; cursor:pointer; }
   .book-swag-note input{ width:auto; margin:0; }
@@ -928,7 +928,7 @@ function renderBrowse(app){
           ${bookSwagOffered(book) ? (() => {
             const bl = cart.filter(l => l.bookId === book.id && !l.seriesGroupId);
             const allHave = cart.some(l => l.bookId === book.id + "::swag") || (bl.length > 0 && bl.every(l => l.swag));
-            return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : `<strong>Swag pack available.</strong> ${money(parseFloat(book.swagPrice))} <em class="swag-note-text">The swag pack for this book could include: stickers, bookmark, magnet, or other items. Contact author for specific content.</em>${inCartCount > 0 ? `<div><button type="button" class="book-pick-btn book-pick-addswag" style="margin-top:6px;">Add swag pack to cart</button></div>` : ""}`}</div>`;
+            return `<div class="book-swag-note">${allHave ? "<strong>Swag pack in cart</strong>" : `<strong>Swag pack available.</strong> ${money(parseFloat(book.swagPrice))} <em class="swag-note-text">(could include: stickers, bookmark, magnet, or other items. Contact author for specific content.)</em>${inCartCount > 0 ? `<div><button type="button" class="book-pick-btn book-pick-addswag" style="margin-top:6px;">Add swag pack to cart</button></div>` : ""}`}</div>`;
           })() : ""}
           <div class="book-card-actions">
             ${inCartCount > 0 ? `
